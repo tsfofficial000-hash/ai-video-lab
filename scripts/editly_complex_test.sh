@@ -32,8 +32,19 @@ python3 -c "import json;json.load(open('spec.json'))" || fail "spec.json is not 
 # ---------- 3. Install + render ----------
 if [ ! -x node_modules/.bin/editly ]; then
   T_N0=$(date +%s)
-  npm install editly@0.14.2 --no-fund --no-audit 2>&1 | tail -4 || fail "npm install editly failed"
+  # headless-gl source-build needs the full X/GL header set; canvas has
+  # prebuilds for Node 18. Full npm output captured for forensics.
+  npm install editly@0.14.2 --no-fund --no-audit > npm_install.log 2>&1
+  RC=$?
   metric editly_npm_install_seconds "$(( $(date +%s) - T_N0 ))"
+  if [ $RC -ne 0 ]; then
+    echo "--- npm_install.log tail (80) ---"
+    tail -80 npm_install.log
+    echo "--- npm debug logs ---"
+    ls -t /home/runner/.npm/_logs/ 2>/dev/null | head -2 | while read -r f; do
+      echo "### $f"; tail -40 "/home/runner/.npm/_logs/$f"; done
+    fail "npm install editly rc=$RC (see npm_install.log tail above)"
+  fi
 fi
 [ -x node_modules/.bin/editly ] || fail "editly binary not found after install"
 

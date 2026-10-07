@@ -48,23 +48,27 @@ log "MCP endpoint is up"
 # ---------------- minimal MCP streamable-HTTP client ----------------
 SESSION=""
 HDRS=/tmp/mcp_h.txt
+BODY=/tmp/mcp_body.txt
 mcp(){
-  local body="$1" resp
+  local body="$1" resp ctype
   local args=( -s -m 180 -X POST "http://127.0.0.1:19789/mcp"
     -H "Content-Type: application/json"
     -H "Accept: application/json, text/event-stream"
     -H "MCP-Protocol-Version: 2025-06-18" )
   [ -n "$SESSION" ] && args+=( -H "Mcp-Session-Id: $SESSION" )
-  args+=( -D "$HDRS" --data-binary "$body" )
-  resp=$(curl "${args[@]}")
-  # server may answer application/json OR an SSE stream; normalize to JSON lines
-  if echo "$resp" | head -1 | grep -q "^event:\|^:"; then
-    resp=$(echo "$resp" | sed -n 's/^data://p')
-  fi
+  args+=( -D "$HDRS" -o "$BODY" --data-binary "$body" )
+  curl "${args[@]}"
   # update session id if present
   local sid
   sid=$(grep -i "^mcp-session-id:" "$HDRS" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '\r')
   [ -n "$sid" ] && SESSION="$sid"
+  # server may answer application/json OR an SSE stream; detect via header
+  ctype=$(grep -i "^content-type:" "$HDRS" 2>/dev/null | head -1)
+  if echo "$ctype" | grep -qi "text/event-stream"; then
+    resp=$(sed -n 's/^data:[[:space:]]*//p' "$BODY" | tail -1)
+  else
+    resp=$(cat "$BODY")
+  fi
   echo "$resp"
 }
 tool_call(){

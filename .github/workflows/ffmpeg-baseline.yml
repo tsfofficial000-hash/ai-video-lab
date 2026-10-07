@@ -1,0 +1,55 @@
+name: "A - FFmpeg Baseline (complex filtergraph)"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/ffmpeg-baseline.yml"
+      - "scripts/ffmpeg_complex_test.sh"
+      - "scripts/build_master.sh"
+      - "scripts/fetch_footage.sh"
+      - "scripts/gen_subs.sh"
+      - "scripts/make_srt.py"
+
+permissions:
+  contents: read
+
+jobs:
+  ffmpeg-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner system report
+        run: |
+          echo "CPU: $(nproc) vCPU | MEM: $(free -h | awk '/Mem/{print $2}') | DISK: $(df -h / | awk 'NR==2{print $4}')"
+          ffmpeg -hide_banner -version | head -2
+          ffprobe -hide_banner -version | head -1
+
+      - name: Run FFmpeg complex edit test (trim + xfade + 9:16 + drawtext + loudnorm + whisper SRT burn-in + hwaccel probes)
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x scripts/*.sh
+          scripts/ffmpeg_complex_test.sh 2>&1 | tee lab_run.log
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-artifacts
+          path: |
+            work/final_ffmpeg.mp4
+            work/master.mp4
+            work/subs.srt
+            work/metrics.txt
+            work/final_probe.json
+            work/footage.json
+            work/hwaccels.txt
+            work/hw_*.err
+            work/time_*.txt
+            work/thumbnail_ffmpeg.jpg
+            lab_run.log
+          retention-days: 7
+          if-no-files-found: warn

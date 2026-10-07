@@ -1,0 +1,58 @@
+name: "B - MoviePy 2.x Programmatic Edit"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/moviepy-test.yml"
+      - "scripts/moviepy_complex_test.py"
+      - "scripts/build_master.sh"
+      - "scripts/fetch_footage.sh"
+      - "scripts/gen_subs.sh"
+      - "scripts/make_srt.py"
+
+permissions:
+  contents: read
+
+jobs:
+  moviepy-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner system report
+        run: |
+          echo "CPU: $(nproc) vCPU | MEM: $(free -h | awk '/Mem/{print $2}') | DISK: $(df -h / | awk 'NR==2{print $4}')"
+
+      - name: Prepare shared fixture + Whisper SRT
+        run: |
+          chmod +x scripts/*.sh
+          scripts/build_master.sh
+          scripts/gen_subs.sh
+
+      - name: Run MoviePy complex edit test
+        shell: bash
+        run: |
+          set -o pipefail
+          pip install -q "moviepy==2.1.2"
+          python scripts/moviepy_complex_test.py 2>&1 | tee moviepy_run.log
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: moviepy-artifacts
+          path: |
+            work/final_moviepy.mp4
+            work/final_moviepy_norm.mp4
+            work/subs.srt
+            work/metrics.txt
+            work/moviepy_run.log
+            work/thumbnail_moviepy.jpg
+          retention-days: 7
+          if-no-files-found: warn

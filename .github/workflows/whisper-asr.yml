@@ -1,0 +1,53 @@
+name: "D - Whisper ASR (faster-whisper vs openai-whisper)"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/whisper-asr.yml"
+      - "scripts/whisper_complex_test.sh"
+      - "scripts/whisper_compare.py"
+      - "scripts/build_master.sh"
+      - "scripts/fetch_footage.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  whisper-asr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner system report
+        run: |
+          echo "CPU: $(nproc) vCPU | MEM: $(free -h | awk '/Mem/{print $2}') | python: $(python --version)"
+
+      - name: Run Whisper ASR comparison + burn-in hand-off
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x scripts/*.sh
+          scripts/whisper_complex_test.sh 2>&1 | tee whisper_run.log
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-artifacts
+          path: |
+            work/subs_fw_small.srt
+            work/subs_fw_base.srt
+            work/subs_ow_base_en.srt
+            work/whisper_comparison.json
+            work/final_whisper_*.mp4
+            work/master.mp4
+            work/metrics.txt
+            work/whisper_run.log
+          retention-days: 7
+          if-no-files-found: warn

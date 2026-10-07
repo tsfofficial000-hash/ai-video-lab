@@ -1,0 +1,61 @@
+name: "E - Palmier Pro macOS Headless Autopsy"
+
+# macOS runners bill at 10x the Linux minute rate on private repos,
+# so this forensic experiment is dispatch-only and time-boxed.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  palmier-autopsy:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System report
+        run: |
+          sw_vers
+          sysctl -n machdep.cpu.brand_string
+          echo "cores: $(sysctl -n hw.ncpu) | RAM: $(( $(sysctl -n hw.memsize) / 1073741824 )) GB"
+          xcodebuild -version
+          swift --version
+
+      - name: Static forensic analysis (no build)
+        run: |
+          chmod +x scripts/*.sh
+          scripts/palmier_analyze.sh 2>&1 | tee palmier_static.log
+        timeout-minutes: 6
+
+      - name: Build + headless launch probe (time-boxed)
+        continue-on-error: true
+        run: |
+          scripts/palmier_build_probe.sh 2>&1 | tee palmier_build.log
+        timeout-minutes: 22
+
+      - name: Append verdicts to step summary
+        if: always()
+        run: |
+          echo "## Palmier Pro Autopsy Metrics" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat palmier_metrics.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no metrics captured)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "### Static report (tail)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -80 "$RUNNER_TEMP/palmier-pro/palmier_static_report.md" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(missing)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: palmier-autopsy-artifacts
+          path: |
+            palmier_static.log
+            palmier_build.log
+            palmier_metrics.txt
+          retention-days: 7
+          if-no-files-found: warn

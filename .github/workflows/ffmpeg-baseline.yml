@@ -12,7 +12,11 @@ on:
       - "scripts/make_srt.py"
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   ffmpeg-baseline:
@@ -53,3 +57,35 @@ jobs:
             lab_run.log
           retention-days: 7
           if-no-files-found: warn
+
+      - name: Commit run log to logs/ffmpeg (persist beyond artifact retention)
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p logs/ffmpeg
+          OUT="logs/ffmpeg/run-${GITHUB_RUN_ID}.md"
+          {
+            echo "# A · FFmpeg baseline — run ${GITHUB_RUN_ID} @ ${GITHUB_SHA::7}" 
+            echo
+            echo "- Trigger: \`${GITHUB_EVENT_NAME}\` — Result: \`${{ job.status }}\`"
+            echo
+            echo "## [METRIC] lines"
+            echo '```text'
+            grep -hE '^\[(METRIC|LAB|WARN|FAIL|DONE|SRT-WRITTEN|SUBS|MASTER|FETCH|TIME-SHIM)' lab_run.log 2>/dev/null | sort -u || echo "(none captured)"
+            echo '```'
+            echo
+            echo "## Raw log tail (last 60 lines)"
+            echo '```text'
+            tail -60 lab_run.log 2>/dev/null || echo "(missing)"
+            echo '```'
+          } > "$OUT"
+          git config user.name "ai-video-lab-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f "$OUT"
+          git commit -m "logs(ffmpeg): run ${GITHUB_RUN_ID} — ${{ job.status }}" || { echo 'nothing to commit'; exit 0; }
+          ok=0
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin main >/dev/null 2>&1 && git push origin HEAD:main >/dev/null 2>&1; then ok=1; echo 'logs pushed'; break; fi
+            echo "push attempt $i failed, retrying..."; sleep 8
+          done
+          [ "$ok" -eq 1 ] || echo '::warning::could not push logs after 5 attempts'

@@ -4,6 +4,8 @@
 
 Five isolated experiments run on GitHub-hosted runners. No cloud video APIs, no watermarks, no credits — pure open source.
 
+> **Repo visibility: PUBLIC** — deliberate choice. Public repos get **unlimited free Actions minutes** (including macOS runners, which are billed 10x on private repos), so the entire lab costs $0.
+
 | # | Workflow | Tool | Runner | What it proves |
 |---|----------|------|--------|----------------|
 | A | `ffmpeg-baseline.yml` | Raw FFmpeg (complex filtergraphs) | `ubuntu-latest` | trim → 9:16 blur-pad composite → xfade → drawtext → TTS mix → loudnorm → Whisper SRT burn-in + hwaccel fallback probe |

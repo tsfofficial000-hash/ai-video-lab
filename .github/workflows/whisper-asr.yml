@@ -11,7 +11,11 @@ on:
       - "scripts/fetch_footage.sh"
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   whisper-asr:
@@ -51,3 +55,38 @@ jobs:
             work/whisper_run.log
           retention-days: 7
           if-no-files-found: warn
+
+      - name: Commit run log + SRTs to logs/whisper (persist beyond artifact retention)
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p logs/whisper
+          for f in work/subs_fw_small.srt work/subs_fw_base.srt work/subs_ow_base_en.srt; do
+            [ -s "$f" ] && cp -f "$f" "logs/whisper/run-${GITHUB_RUN_ID}-$(basename "$f" .srt | sed 's/subs_//').srt" || true
+          done
+          OUT="logs/whisper/run-${GITHUB_RUN_ID}.md"
+          {
+            echo "# D · Whisper ASR comparison — run ${GITHUB_RUN_ID} @ ${GITHUB_SHA::7}"
+            echo
+            echo "- Trigger: \`${GITHUB_EVENT_NAME}\` — Result: \`${{ job.status }}\`"
+            echo
+            echo "## [METRIC] lines"
+            echo '```text'
+            cat work/metrics.txt 2>/dev/null | grep whisper | sort -u || echo "(none captured)"
+            echo '```'
+            echo
+            echo "## Raw log tail (last 60 lines)"
+            echo '```text'
+            tail -60 whisper_run.log 2>/dev/null || echo "(missing)"
+            echo '```'
+          } > "$OUT"
+          git config user.name "ai-video-lab-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f logs/whisper/
+          git commit -m "logs(whisper): run ${GITHUB_RUN_ID} — ${{ job.status }}" || { echo 'nothing to commit'; exit 0; }
+          ok=0
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin main >/dev/null 2>&1 && git push origin HEAD:main >/dev/null 2>&1; then ok=1; echo 'logs pushed'; break; fi
+            echo "push attempt $i failed, retrying..."; sleep 8
+          done
+          [ "$ok" -eq 1 ] || echo '::warning::could not push logs after 5 attempts'

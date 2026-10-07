@@ -1,13 +1,17 @@
 name: "E - Palmier Pro macOS Headless Autopsy"
 
-# macOS runners bill at 10x the Linux minute rate on private repos,
-# so this forensic experiment is dispatch-only and time-boxed.
+# Repo is PUBLIC => hosted-runner minutes (incl. macOS) are free & unlimited.
+# Dispatch-only for benchmark control; time-boxed to respect CI budget.
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   palmier-autopsy:
@@ -59,3 +63,43 @@ jobs:
             palmier_metrics.txt
           retention-days: 7
           if-no-files-found: warn
+
+      - name: Commit autopsy logs to logs/palmier (persist beyond artifact retention)
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p logs/palmier
+          cp -f "$RUNNER_TEMP/palmier-pro/palmier_static_report.md" "logs/palmier/run-${GITHUB_RUN_ID}-static-report.md" 2>/dev/null || true
+          cp -f "$RUNNER_TEMP/palmier-pro/palmier_launch.log" "logs/palmier/run-${GITHUB_RUN_ID}-launch.log" 2>/dev/null || true
+          cp -f palmier_metrics.txt "logs/palmier/run-${GITHUB_RUN_ID}-metrics.txt" 2>/dev/null || true
+          OUT="logs/palmier/run-${GITHUB_RUN_ID}.md"
+          {
+            echo "# E · Palmier Pro macOS autopsy — run ${GITHUB_RUN_ID} @ ${GITHUB_SHA::7}"
+            echo
+            echo "- Trigger: \`${GITHUB_EVENT_NAME}\` — Result: \`${{ job.status }}\`"
+            echo
+            echo "## [METRIC] lines"
+            echo '```text'
+            cat palmier_metrics.txt 2>/dev/null || echo "(none captured)"
+            echo '```'
+            echo
+            echo "## Static log tail (last 40 lines)"
+            echo '```text'
+            tail -40 palmier_static.log 2>/dev/null || echo "(missing)"
+            echo '```'
+            echo
+            echo "## Build probe log tail (last 40 lines)"
+            echo '```text'
+            tail -40 palmier_build.log 2>/dev/null || echo "(missing)"
+            echo '```'
+          } > "$OUT"
+          git config user.name "ai-video-lab-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f logs/palmier/
+          git commit -m "logs(palmier): run ${GITHUB_RUN_ID} — ${{ job.status }}" || { echo 'nothing to commit'; exit 0; }
+          ok=0
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin main >/dev/null 2>&1 && git push origin HEAD:main >/dev/null 2>&1; then ok=1; echo 'logs pushed'; break; fi
+            echo "push attempt $i failed, retrying..."; sleep 8
+          done
+          [ "$ok" -eq 1 ] || echo '::warning::could not push logs after 5 attempts'

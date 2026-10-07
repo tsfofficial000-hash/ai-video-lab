@@ -32,26 +32,43 @@ python3 -c "import json;json.load(open('spec.json'))" || fail "spec.json is not 
 # ---------- 3. Install + render ----------
 if [ ! -x node_modules/.bin/editly ]; then
   T_N0=$(date +%s)
-  # headless-gl source-build needs the full X/GL header set; canvas has
-  # prebuilds for Node 18. Full npm output captured for forensics.
-  npm install editly@0.14.2 --no-fund --no-audit > npm_install.log 2>&1
+  # --ignore-scripts: install all JS deps first, then patch the 2018-era
+  # ANGLE header in gl@5 (uses uintptr_t without <cstdint>; modern GCC-11+
+  # rejects it) and only THEN compile the native modules (gl, canvas).
+  npm install editly@0.14.2 --ignore-scripts --no-fund --no-audit > npm_install.log 2>&1
   RC=$?
   metric editly_npm_install_seconds "$(( $(date +%s) - T_N0 ))"
   if [ $RC -ne 0 ]; then
-    echo "--- npm_install.log tail (80) ---"
-    tail -80 npm_install.log
-    echo "--- npm debug logs ---"
-    ls -t /home/runner/.npm/_logs/ 2>/dev/null | head -2 | while read -r f; do
-      echo "### $f"; tail -40 "/home/runner/.npm/_logs/$f"; done
-    fail "npm install editly rc=$RC (see npm_install.log tail above)"
+    echo "--- npm_install.log tail (80) ---"; tail -80 npm_install.log
+    fail "npm install editly rc=$RC"
   fi
+  echo "[LAB-C] patching node_modules/gl/angle/src/common/angleutils.h for modern GCC..."
+  sed -i 's|^#include <vector>$|#include <vector>\n#include <cstdint>|' \
+    node_modules/gl/angle/src/common/angleutils.h
+  grep -q "include <cstdint>" node_modules/gl/angle/src/common/angleutils.h \
+    && echo "[LAB-C] patch applied" || echo "[LAB-C] WARNING: patch pattern missed"
+  npm rebuild gl canvas > npm_rebuild.log 2>&1
+  RC=$?
+  if [ $RC -ne 0 ]; then
+    echo "--- npm_rebuild.log tail (60) ---"; tail -60 npm_rebuild.log
+    fail "npm rebuild gl canvas rc=$RC"
+  fi
+  metric editly_native_rebuild ok
 fi
 [ -x node_modules/.bin/editly ] || fail "editly binary not found after install"
 
 T0=$(date +%s)
-./node_modules/.bin/editly spec.json 2>&1 | tail -25
-RC=${PIPESTATUS[0]}
-[ $RC -eq 0 ] || fail "editly render rc=$RC"
+./node_modules/.bin/editly spec.json > editly_render.log 2>&1
+RC=$?
+if [ $RC -ne 0 ]; then
+  echo "[LAB-C] direct render failed (rc=$RC) — retrying under xvfb (headless-GL display)..."
+  tail -12 editly_render.log
+  command -v xvfb-run >/dev/null 2>&1 || sudo apt-get install -y -qq xvfb >/dev/null
+  xvfb-run -a ./node_modules/.bin/editly spec.json >> editly_render.log 2>&1
+  RC=$?
+fi
+tail -18 editly_render.log
+[ $RC -eq 0 ] || fail "editly render rc=$RC (direct + xvfb)"
 T1=$(date +%s)
 metric editly_render_seconds "$((T1-T0))"
 

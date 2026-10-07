@@ -1,0 +1,60 @@
+name: "E2 - Palmier Pro MCP Agent-Driven Export"
+
+# Repo is PUBLIC => hosted-runner minutes (incl. macOS) are free & unlimited.
+# Builds Palmier Pro from source on macos-26, launches it headless, and drives
+# its embedded MCP server (127.0.0.1:19789/mcp) to perform a complete edit +
+# H.264 export via JSON-RPC tool calls — no GUI interaction.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  palmier-mcp-drive:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System report
+        run: |
+          sw_vers
+          sysctl -n machdep.cpu.brand_string
+          echo "cores: $(sysctl -n hw.ncpu) | RAM: $(( $(sysctl -n hw.memsize) / 1073741824 )) GB"
+          xcodebuild -version
+          command -v ffmpeg && ffmpeg -version | head -1 || echo "ffmpeg: not on PATH"
+
+      - name: Build + launch + MCP agent-driven edit + export (time-boxed)
+        continue-on-error: false
+        timeout-minutes: 33
+        run: |
+          chmod +x scripts/*.sh
+          scripts/palmier_mcp_drive.sh 2>&1 | tee palmier_e2.log
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: palmier-e2-artifacts
+          path: |
+            palmier_e2.log
+            palmier_metrics.txt
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Commit E2 evidence to logs/ (persist beyond artifact retention)
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p logs/palmier
+          cp -f palmier_metrics.txt "logs/palmier/run-${GITHUB_RUN_ID}-e2-metrics.txt" 2>/dev/null || true
+          scripts/push_logs.sh palmier-e2 palmier_e2.log

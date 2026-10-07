@@ -66,4 +66,5 @@ jobs:
         shell: bash
         env:
           JOB_STATUS: ${{ job.status }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: scripts/push_logs.sh moviepy moviepy_run.log

@@ -70,6 +70,7 @@ jobs:
         shell: bash
         env:
           JOB_STATUS: ${{ job.status }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p logs/editly
           cp -f work/spec.json "logs/editly/run-${GITHUB_RUN_ID}-spec.json" 2>/dev/null || true

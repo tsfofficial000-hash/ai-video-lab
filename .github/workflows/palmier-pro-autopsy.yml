@@ -69,6 +69,7 @@ jobs:
         shell: bash
         env:
           JOB_STATUS: ${{ job.status }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p logs/palmier
           cp -f "$RUNNER_TEMP/palmier-pro/palmier_static_report.md" "logs/palmier/run-${GITHUB_RUN_ID}-static-report.md" 2>/dev/null || true

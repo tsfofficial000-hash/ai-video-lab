@@ -61,6 +61,7 @@ jobs:
         shell: bash
         env:
           JOB_STATUS: ${{ job.status }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p logs/whisper
           for f in work/subs_fw_small.srt work/subs_fw_base.srt work/subs_ow_base_en.srt; do

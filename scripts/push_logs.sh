@@ -38,15 +38,19 @@ git config user.name "ai-video-lab-bot"
 git config user.email "github-actions[bot]@users.noreply.github.com"
 git add -f "logs/$TOOL/" 2>/dev/null || true
 git commit -m "logs($TOOL): run ${GITHUB_RUN_ID:-local} — $STATUS" 2>&1 | tail -3 || true
-echo "--- git push stderr/stdout follows ---"
-PUSH_OUT=$(git push origin HEAD:main 2>&1)
-PUSH_RC=$?
-echo "$PUSH_OUT" | tail -8
-if [ "$PUSH_RC" -eq 0 ]; then
+ok=0
+for i in 1 2 3; do
+  echo "--- push attempt $i: pull --rebase then push ---"
+  git pull --rebase origin main 2>&1 | tail -3 || true
+  git push origin HEAD:main 2>&1 | tail -6
+  [ ${PIPESTATUS[0]} -eq 0 ] && ok=1 && break
+  sleep 8
+done
+if [ "$ok" -eq 1 ]; then
   echo "[PUSH-LOGS] git push ok"
   exit 0
 fi
-echo "[PUSH-LOGS] git push failed (rc=$PUSH_RC) — falling back to git-data API"
+echo "[PUSH-LOGS] git push failed after 3 attempts — falling back to git-data API"
 FILES=$(find "logs/$TOOL" -type f | head -20)
 echo "[PUSH-LOGS] API commit of: $FILES"
 python3 scripts/api_commit.py -m "logs($TOOL): run ${GITHUB_RUN_ID:-local} — $STATUS" $FILES \

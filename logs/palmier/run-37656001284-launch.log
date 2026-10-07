@@ -1,0 +1,6 @@
+[app] NOTICE: launch pid=21569
+[account] WARN: account backend misconfigured
+[app] NOTICE: BundledFonts: registered 18 files across 13 families
+[app] NOTICE: notifications disabled outside app bundle
+[mcp] NOTICE: http server started port=19789
+[agent] NOTICE: skill catalog loaded 13 entries from https://raw.githubusercontent.com/palmier-io/palmier-skills/main

@@ -35,6 +35,21 @@ def luma_profile(path, fps=2):
     return [{"t": t, "y": y} for t, y in zip(times, ys)]
 
 
+def caption_band_white_ratio(path, t, band=(0.60, 0.92), white=232):
+    """Fraction of near-white pixels in the caption band at time t (D6).
+    geq masks pixels >= white to 255, else 0; YAVG/255 then equals the ratio.
+    Threshold 232: compressed bold-white caption cores survive well above it
+    (measured 6.5% ratio on burned text) while normal footage stays near 0."""
+    vf = (f"crop=iw:ih*{band[1]-band[0]:.2f}:0:ih*{band[0]:.2f},"
+          "geq=lum='if(gt(lum(X,Y)," + str(white) + "),255,0)':cb=128:cr=128,"
+          "signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-")
+    p = subprocess.run(["ffmpeg", "-hide_banner", "-ss", str(t), "-i", path,
+                        "-frames:v", "1", "-vf", vf, "-f", "null", "-"],
+                       capture_output=True, text=True)
+    m = re.search(r"YAVG=([\d.]+)", p.stdout or "")
+    return (float(m.group(1)) / 255.0) if m else 0.0
+
+
 def check(path, plan, reports):
     p = ffprobe_json(path)
     v = next((s for s in p["streams"] if s["codec_type"] == "video"), None)
@@ -120,8 +135,22 @@ def check(path, plan, reports):
         ok("not_silent_tail", not tail_silent, "intentional fade excluded (2s threshold)")
 
     ok("size_reasonable", size / 1e6 < 220, f"{size/1e6:.1f}MB < 220MB")
-    ok("captions_burned", not plan.get("caption_style") or
-       (reports + "/captions_report.json") and True, plan.get("caption_style") or "n/a")
+
+    # G5: captions burn-existence pixel test (D6: was a tautology)
+    if not plan.get("caption_style"):
+        ok("captions_burned", True, "n/a (plan has no caption_style)")
+    else:
+        cues = None
+        cr = jload(reports + "/captions_report.json", {}) if reports else {}
+        cues = cr.get("cues")
+        if not cues:
+            cues = [round(dur * f, 2) for f in (0.2, 0.5, 0.8)]
+        cues = [min(max(c, 0.1), dur - 0.1) for c in cues][:3]
+        ratios = [(c, caption_band_white_ratio(path, c)) for c in cues]
+        hits = [(c, r) for c, r in ratios if r >= 0.003]
+        ok("captions_burned", len(hits) >= 2,
+           f"white-pixel ratio at cues: " + ", ".join(f"{c}s={r:.3%}" for c, r in ratios) +
+           f" ({len(hits)}/3 cues show burned text)")
     return results, repairs, {"duration": dur, "size": size, "loudnorm": ln}
 
 

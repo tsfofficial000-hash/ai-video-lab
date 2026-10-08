@@ -1,0 +1,164 @@
+name: "98 - Iterate (single-shot creative loop)"
+on:
+  workflow_dispatch:
+    inputs:
+      source_url:
+        description: "Source URL, 'source-v1' release cache, or empty = safe sample"
+        required: false
+        default: "source-v1"
+      style:
+        description: "configs/styles.json key"
+        required: false
+        default: "beat_montage"
+      mood:
+        description: "music mood"
+        required: false
+        default: "cinematic"
+      target_len:
+        description: "target seconds"
+        required: false
+        default: "30"
+      draft:
+        description: "draft render (540x960 veryfast crf23)"
+        required: false
+        default: "true"
+
+permissions: { contents: write }
+
+jobs:
+  iterate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+
+      - name: "Stage 01+02: acquire source + proxy/wav/metadata (in-workspace)"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          URL="${{ inputs.source_url }}"
+          if [ "$URL" = "source-v1" ]; then
+            gh release download source-v1 -p "source.mp4" --repo "$GITHUB_REPOSITORY" --clobber \
+              || echo "source-v1 download failed - will fall back to sample"
+          fi
+          if [ ! -s source.mp4 ] && [ -n "$URL" ] && [ "$URL" != "source-v1" ]; then
+            bash scripts/montage/acquire_source.sh "$URL" source.mp4 source-v1 || true
+          fi
+          if [ ! -s source.mp4 ]; then
+            curl -sSL --fail --retry 2 --max-time 300 -o source.mp4 \
+              "https://download.blender.org/durian/trailer/sintel_trailer-1080p.mp4" \
+              || curl -sSL --fail --retry 2 --max-time 300 -o source.mp4 \
+                 "https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4"
+          fi
+          python3 scripts/cineforge/fetch_music.py --mood "${{ inputs.mood }}" \
+            --out media/music.mp3 --manifest reports/media_manifest.json || true
+          mkdir -p reports out media
+          python3 - <<'PY'
+          import json, subprocess
+          d = json.loads(subprocess.check_output(["ffprobe","-v","error","-print_format","json",
+                                                  "-show_format","-show_streams","source.mp4"]).decode())
+          v = next(s for s in d["streams"] if s["codec_type"] == "video")
+          a = next((s for s in d["streams"] if s["codec_type"] == "audio"), None)
+          json.dump({"duration": float(d["format"]["duration"]), "width": v["width"],
+                     "height": v["height"],
+                     "fps": eval(v.get("r_frame_rate", "30/1")),
+                     "path": "source.mp4"}, open("reports/source_metadata.json", "w"))
+          print("source:", d["format"]["duration"], "s")
+          PY
+          ffmpeg -v error -y -i source.mp4 -vf scale=480:-2 -c:v libx264 -preset veryfast \
+            -crf 28 -an media/proxy.mp4
+          ffmpeg -v error -y -i source.mp4 -vn -ac 1 -ar 22050 media/audio.wav
+
+      - name: "Stages 03-06: audio + beats (+ transcript skipped for draft speed)"
+        run: |
+          set -e
+          SRC_DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 source.mp4)
+          cd scripts/cineforge
+          python3 audio_analysis.py --audio ../../media/audio.wav --reports ../../reports || true
+          python3 beat_detect.py --audio ../../media/audio.wav --reports ../../reports --src-duration "${SRC_DUR}"
+          cd ../..
+
+      - name: "Stage 06: edit decision"
+        run: |
+          set -e
+          cd scripts/cineforge && CF_SOURCE_PATH=../../media/proxy.mp4 \
+            python3 edit_plan.py --reports ../../reports --out ../../out \
+            --style "${{ inputs.style }}" --target-len "${{ inputs.target_len }}"
+          cd ../..
+
+      - name: "Stage 07: audio mix (music + SFX + duck diagnostics)"
+        run: |
+          set -e
+          MUSIC=$(python3 -c "import json;p=json.load(open('reports/edit_plan.json'));print(p['audio_ducking_plan'].get('music') or '')")
+          cd scripts/cineforge
+          if [ -n "$MUSIC" ] && [ -f "../../$MUSIC" ]; then
+            python3 audio_mix.py --voice ../../source.mp4 --music "../../$MUSIC" \
+              --plan ../../reports/edit_plan.json \
+              --out ../../media/mixed_audio.wav --reports ../../reports
+          else
+            python3 audio_mix.py --voice ../../source.mp4 \
+              --plan ../../reports/edit_plan.json \
+              --out ../../media/mixed_audio.wav --reports ../../reports
+          fi
+          cd ../..
+
+      - name: "Stage 08: render (draft path, dry-run gate incl. typography smoke)"
+        run: |
+          set -e
+          cd scripts/cineforge && python3 render_ffmpeg.py --source ../../source.mp4 \
+            --timeline ../../out/timeline.json --plan ../../reports/edit_plan.json \
+            --mixed ../../media/mixed_audio.wav --out ../../out/master.mp4 \
+            --dryrun ${{ inputs.draft == 'true' && '--draft' || '' }}
+          cd ../..
+
+      - name: "Stage 09: captions + hook burn"
+        run: |
+          set -e
+          MP=reports/edit_plan.json
+          TR=reports/transcript.json
+          [ -f "$TR" ] || echo '{"transcript_empty": true}' > "$TR"
+          CS=$(python3 -c "import json;p=json.load(open('$MP'));print(p.get('caption_style') or '')")
+          cd scripts/cineforge
+          python3 captions.py --transcript "../$TR" --plan "../$MP" --style "$CS" \
+            --out ../media/captions.ass --source ../../source.mp4 || true
+          cd ../..
+          if [ -f media/captions.ass ] && grep -q "Dialogue" media/captions.ass; then
+            ffmpeg -v error -y -i out/master.mp4 -vf "ass=media/captions.ass:fontsdir=media/fonts" \
+              -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -c:a copy \
+              -movflags +faststart out/final.mp4
+          else
+            cp out/master.mp4 out/final.mp4
+          fi
+
+      - name: "Stage 10: QC"
+        run: |
+          set -e
+          cd scripts/cineforge && python3 qc.py --video ../../out/final.mp4 \
+            --plan ../../reports/edit_plan.json --reports ../../reports; cd ../..
+
+      - name: "Evidence bundle (draft)"
+        if: always()
+        run: |
+          set -e
+          mkdir -p draft_evidence
+          for f in out/final.mp4 out/poster.jpg reports/qc_report.json \
+                   reports/edit_plan.json reports/audio_mix_report.json \
+                   reports/selection_audit.json reports/captions_report.json \
+                   reports/fonts_report.json reports/media_manifest.json; do
+            [ -f "$f" ] && cp "$f" draft_evidence/ || true
+          done
+          F=draft_evidence/final.mp4
+          if [ -f "$F" ]; then
+            DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$F")
+            ffmpeg -v error -y -i "$F" -vf "fps=$(python3 -c "print(max(16/float('$DUR'),0.05))"),scale=135:240,tile=4x4" \
+              -frames:v 1 draft_evidence/contact_sheet.png
+          fi
+          ls -la draft_evidence/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iterate-evidence-${{ github.run_id }}
+          path: draft_evidence/
+          retention-days: 7

@@ -72,6 +72,16 @@ def main():
     den = "afftdn=nr=12:nf=-32," if a.denoise else ""
 
     if a.music:
+        # validate the music input (headerless containers break [1:a] binding)
+        pr = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+                             "-of", "csv=p=0", a.music], capture_output=True, text=True).stdout
+        if "audio" not in pr:
+            print(f"[mix] music input unprobeable ({a.music}) - forcing mp3 demuxer", flush=True)
+            fixed = "/tmp/_music_fixed.wav"
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "mp3", "-i", a.music,
+                            "-ar", "48000", "-ac", "2", fixed], check=True,
+                           capture_output=True, text=True)
+            a.music = fixed
         # voice = sidechain key; music = main input. Numeric options only
         # (the invalid text constant that crashed ffmpeg is gone - see D7).
         fc = (

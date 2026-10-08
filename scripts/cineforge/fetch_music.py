@@ -32,6 +32,30 @@ def probe_ok(path):
         return False
 
 
+def _has_audio(path):
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                              "stream=codec_type", "-of", "csv=p=0", path],
+                             capture_output=True, text=True).stdout
+        return "audio" in out
+    except Exception:
+        return False
+
+
+def _heal_container(path):
+    """Re-mux/re-encode via forced mp3 demuxer when the container confuses probes."""
+    fixed = path + ".fixed.mp3"
+    r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "mp3", "-i", path,
+                        "-c:a", "libmp3lame", "-b:a", "128k", fixed],
+                       capture_output=True, text=True)
+    if r.returncode == 0 and _has_audio(fixed):
+        os.replace(fixed, path)
+        return True
+    if os.path.isfile(fixed):
+        os.remove(fixed)
+    return False
+
+
 def synth_pad(dest, seconds=180):
     """Fallback: CC0-equivalent generated ambient pad (no third-party rights)."""
     cmd = ["ffmpeg", "-v", "error", "-y",
@@ -87,6 +111,10 @@ def main():
             print(f"candidate failed: {name}: {type(e).__name__}", flush=True)
 
     synth_pad(a.out)
+    if not _has_audio(a.out):
+        # unseeded noise sources can yield containers some probes misparse - self-heal
+        if not _heal_container(a.out):
+            raise SystemExit("synth pad produced no decodable audio")
     entry.update({"license": "generated in-pipeline (no third-party rights)",
                   "title": "generated_ambient_pad.mp3", "url": None, "bytes": os.path.getsize(a.out)})
     print(json.dumps({"status": "ok", "via": "synth_fallback", **entry}))

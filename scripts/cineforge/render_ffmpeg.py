@@ -112,9 +112,19 @@ def main():
     # ---- audio replace (mixed track) without re-encoding video ----
     cur = "out/master.mp4"
     if a.mixed and os.path.isfile(a.mixed):
+        mdur = float(json.loads(subprocess.check_output(
+            ["ffprobe", "-v", "error", "-print_format", "json", "-show_format", cur]).decode()
+        )["format"]["duration"])
         sh(["ffmpeg", "-v", "error", "-y", "-i", cur, "-i", a.mixed,
             "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-            "-shortest", "-movflags", "+faststart", "out/_av.mp4"])
+            "-t", f"{mdur:.3f}", "-movflags", "+faststart", "out/_av.mp4"])
+        # verify the mux preserved the video length (G-gate: never ship a shrunken master)
+        adur = float(json.loads(subprocess.check_output(
+            ["ffprobe", "-v", "error", "-print_format", "json", "-show_format", "out/_av.mp4"]).decode()
+        )["format"]["duration"])
+        if adur < mdur * 0.9:
+            raise RuntimeError(f"audio mux truncated video: {adur:.2f}s < {mdur:.2f}s "
+                               f"(mixed={a.mixed}) - refusing to continue")
         cur = "out/_av.mp4"
 
     # ---- grade (D5: single application point, from configs/grades.json) ----

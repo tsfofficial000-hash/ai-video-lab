@@ -237,6 +237,7 @@ def main():
             d["reason"] = f["reason"] + (" -> caption below face bbox" if f["bbox"]
                                          else " -> bottom safe-zone")
 
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
     open(a.out, "w").write(hdr + "\n".join(events))
     jdump({"style": a.style, "events": len(events), "cues": cues[:12],
            "font_caption": cap_font, "font_hook": hook_font,

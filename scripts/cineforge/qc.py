@@ -131,7 +131,7 @@ def check(path, plan, reports):
         sl = subprocess.run(["ffmpeg", "-hide_banner", "-i", path, "-af",
                              "silencedetect=noise=-45dB:d=2", "-f", "null", "-"],
                             capture_output=True, text=True).stderr
-        tail_silent = bool(re.search(rf"silence_start: {max(0, dur-3):.2}", sl))
+        tail_silent = bool(re.search(rf"silence_start: {float(max(0, dur - 3)):.2f}", sl))
         ok("not_silent_tail", not tail_silent, "intentional fade excluded (2s threshold)")
 
     ok("size_reasonable", size / 1e6 < 220, f"{size/1e6:.1f}MB < 220MB")

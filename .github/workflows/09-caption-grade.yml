@@ -41,7 +41,7 @@ jobs:
           else
             cp "$MV" out/final.mp4
           fi
-          cd ../.. && ffprobe -v error -show_entries format=duration,size -of default=nw=1 out/final.mp4
+          ffprobe -v error -show_entries format=duration,size -of default=nw=1 out/final.mp4
       - uses: actions/upload-artifact@v4
         with:
           name: stage-09-final

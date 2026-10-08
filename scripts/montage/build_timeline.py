@@ -118,7 +118,7 @@ def build(src, out_json, title_main, title_sub, preview=False, target_len=None):
 
     # ---- selection: luma-gated, forward-only, overlap-free (D3) ----------------
     luma = luma_profile_ffmpeg(src, fps=2, cache="/tmp/_montage_luma.json")
-    sel = Selector(grid, dur, luma=luma, min_y=30.0)
+    sel = Selector(grid, dur, luma=luma, min_y=36.0)
     scene_set = cuts
 
     def scene_score(b):

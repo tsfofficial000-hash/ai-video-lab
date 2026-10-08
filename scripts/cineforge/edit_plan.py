@@ -69,7 +69,7 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
 
     n_target = max(6, int(round(target_len / base_out)))
 
-    sel = Selector(beats_list, dur, luma=luma, min_y=30.0)
+    sel = Selector(beats_list, dur, luma=luma, min_y=36.0)
     segs = []
     cursor = sel.candidates[0] if sel.candidates else 1.5
     peaks = [p for p in (beats.get("energy_peak_starts") or [])

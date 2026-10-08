@@ -50,7 +50,7 @@ def instances():
     return out
 
 
-def probe(base, vid):
+def probe(base, vid, min_height=720):
     try:
         d = json.loads(get(f"{base}/api/v1/videos/{vid}?local=true", 14))
         if "error" in d:
@@ -73,10 +73,10 @@ def probe(base, vid):
             return (1 if (f.get("type") or "").startswith("video/mp4") else 0, h(f))
 
         v = sorted([f for f in adaptive if (f.get("type", "").startswith("video/") and
-                    h(f) >= a.min_height)], key=key, reverse=True)
+                    h(f) >= min_height)], key=key, reverse=True)
         a_fmt = sorted([f for f in adaptive if f.get("type", "").startswith("audio/")],
                        key=lambda f: int(f.get("bitrate") or 0), reverse=True)
-        mlist = sorted([f for f in muxed if h(f) >= min(a.min_height, 720)], key=h, reverse=True)
+        mlist = sorted([f for f in muxed if h(f) >= min(min_height, 720)], key=h, reverse=True)
         if v and a_fmt:
             return (base, {"title": d.get("title"), "dur": d.get("lengthSeconds"),
                            "v_url": v[0]["url"], "v_h": h(v[0]),
@@ -120,7 +120,7 @@ def main():
     hit = None
     diag = []
     with cf.ThreadPoolExecutor(max_workers=10) as ex:
-        futs = {ex.submit(probe, b, a.video_id): b for b in bases}
+        futs = {ex.submit(probe, b, a.video_id, a.min_height): b for b in bases}
         for f in cf.as_completed(futs, timeout=a.timeout):
             base, res, err = f.result()
             diag.append({"base": base, "ok": bool(res), "err": err})

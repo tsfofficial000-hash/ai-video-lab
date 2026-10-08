@@ -50,8 +50,10 @@ jobs:
           ffmpeg -v error -y -f lavfi -i "testsrc2=s=640x360:d=10:r=30" -f lavfi -i "sine=frequency=440:duration=10" -c:v libx264 -preset ultrafast -c:a aac -shortest src5.mp4
           for i in 0 1 2 3 4; do
             SS=$(python3 -c "print(1.0 + $i*1.5)")
-            ffmpeg -v error -y -ss $SS -t 1.0 -i src5.mp4 -filter_complex "[0:v]null,fps=60,setpts=PTS/1.0,fps=30,scale=1138:640,crop=360:640:389:0,setsar=1,scale=360:640,format=yuv420p,trim=duration=1.0,setpts=PTS-STARTPTS[v];[0:a]atempo=1.0,atrim=duration=1.0,asetpts=PTS-STARTPTS[a]" -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -crf 20 -c:a aac -r 30 -vsync cfr seg_$i.mp4
+            ffmpeg -v error -y -ss $SS -t 1.0 -i src5.mp4 -filter_complex "[0:v]null,fps=60,setpts=PTS/1.0,fps=30,scale=1138:640,crop=360:640:389:0,setsar=1,scale=360:640,format=yuv420p,trim=duration=1.0,setpts=PTS-STARTPTS[v];[0:a]atempo=1.0,atrim=duration=1.0,asetpts=PTS-STARTPTS[a]" -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -crf 20 -c:a aac -r 30 -vsync cfr seg_00$i.mp4
+            ffmpeg -hide_banner -i seg_00$i.mp4 -frames:v 1 -vf signalstats,metadata=print:key=lavfi.signalstats.YAVG -f null - 2>&1 | grep -a YAVG | head -1 | sed "s/^/seg$i /"
           done
+          ffmpeg -hide_banner -i src5.mp4 -ss 5.0 -frames:v 1 -vf signalstats,metadata=print:key=lavfi.signalstats.YAVG -f null - 2>&1 | grep -a YAVG | head -1 | sed "s/^/src5@5s /"
           python3 - <<'PY'
           import json
           segs = [{"i": i, "out_dur": 1.0, "transition_after": {"type": "fade", "dur": 0.05}} for i in range(5)]

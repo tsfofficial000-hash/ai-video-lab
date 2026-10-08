@@ -10,6 +10,7 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
       - run: |
           ffmpeg -version | head -1
           mkdir -p /tmp/mx && cd /tmp/mx

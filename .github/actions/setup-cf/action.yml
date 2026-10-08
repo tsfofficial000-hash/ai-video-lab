@@ -16,13 +16,24 @@ runs:
       with:
         path: ~/.cache/huggingface
         key: whisper-models-v1
-    - name: Install stack
+    - name: Install stack (retry + hang guard - GH pip cache can stall silently)
       shell: bash
       run: |
-        set -e
-        pip install --quiet -r requirements-cineforge.txt
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libgl1 libglib2.0-0
+        ok=0
+        for i in 1 2 3; do
+          if timeout 360 pip install -r requirements-cineforge.txt; then ok=1; break; fi
+          echo "pip attempt $i failed or hung - retrying"
+          sleep 5
+        done
+        [ "$ok" = "1" ] || { echo "pip install failed after 3 attempts"; exit 1; }
+        for i in 1 2; do
+          if timeout 150 sudo apt-get update -qq && \
+             timeout 200 sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libgl1 libglib2.0-0; then
+            break
+          fi
+          echo "apt attempt $i failed - retrying"
+          sleep 5
+        done
         ffmpeg -version | head -1
     - name: OFL fonts (cached, never fails the run)
       shell: bash

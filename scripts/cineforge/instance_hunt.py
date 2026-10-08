@@ -128,6 +128,10 @@ def sh_download(url, dest, tries=3):
         size = os.path.getsize(dest) if os.path.isfile(dest) else 0
         if r.returncode == 0 and size > 65536:
             return size
+        if size and size < 65536:
+            with open(dest, "rb") as f:
+                head = f.read(280)
+            print(f"  body[{size}B]: {head[:160]!r}", flush=True)
         print(f"  dl attempt {k+1} rc={r.returncode} size={size}", flush=True)
         time.sleep(2)
     return size
@@ -141,6 +145,82 @@ def probe_file(path):
         return any(s["codec_type"] == "video" for s in d["streams"])
     except Exception:
         return False
+
+
+# ---------------- Piped phase (different proxy architecture) ----------------
+PIPED_APIS = ["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de",
+              "https://api.piped.private.coffee", "https://pipedapi.drgns.space",
+              "https://pipedapi.reallyaweso.me", "https://piapi.ggtyler.dev",
+              "https://pipedapi.ducks.party", "https://pipedapi.leptons.xyz"]
+
+
+def piped_probe(api, vid):
+    try:
+        d = json.loads(get(f"{api}/streams/{vid}", 14))
+        if d.get("error") or d.get("message"):
+            return None, f"api:{str(d.get('error') or d.get('message'))[:60]}"
+        def hn(q):
+            try:
+                return int(str(q).replace("p", ""))
+            except Exception:
+                return 0
+        vs = [f for f in (d.get("videoStreams") or [])
+              if f.get("videoOnly") and f.get("url") and hn(f.get("quality")) >= 720]
+        vs.sort(key=lambda f: (1 if f.get("format") == "MP4" else 0, hn(f.get("quality"))), reverse=True)
+        as_ = sorted([f for f in (d.get("audioStreams") or []) if f.get("url")],
+                     key=lambda f: f.get("bitrate") or 0, reverse=True)
+        muxed = sorted([f for f in (d.get("videoStreams") or [])
+                        if not f.get("videoOnly") and f.get("url") and hn(f.get("quality")) >= 480],
+                       key=lambda f: hn(f.get("quality")), reverse=True)
+        if vs and as_:
+            return {"v": vs[0], "a": as_[0], "h": hn(vs[0].get("quality")),
+                    "title": d.get("title"), "dur": d.get("duration"), "muxed": None}, None
+        if muxed:
+            return {"v": None, "a": None, "h": hn(muxed[0].get("quality")),
+                    "title": d.get("title"), "dur": d.get("duration"), "muxed": muxed[0]}, None
+        return None, "no streams"
+    except Exception as e:
+        return None, f"{type(e).__name__}: {str(e)[:60]}"
+
+
+def piped_download(api, res, dest):
+    tmp = "/tmp/_p"
+    if res.get("muxed"):
+        u = res["muxed"]["url"]
+        sz = sh_download(u, tmp + ".mp4")
+        if probe_file(tmp + ".mp4"):
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp + ".mp4",
+                            "-c", "copy", dest], check=True)
+            return True, f"piped-muxed {sz/1e6:.1f}MB"
+        return False, f"piped muxed invalid {sz}B"
+    v, au = res["v"], res["a"]
+    ve = ".mp4" if v.get("format") == "MP4" else ".webm"
+    ae = ".m4a" if au.get("format") == "M4A" else ".webm"
+    szv = sh_download(v["url"], tmp + ve)
+    sza = sh_download(au["url"], tmp + ae)
+    if probe_file(tmp + ve) and os.path.getsize(tmp + ae) > 65536:
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp + ve, "-i", tmp + ae,
+                        "-c", "copy", dest], check=True)
+        return True, f"piped adaptive v={szv/1e6:.1f}MB a={sza/1e6:.1f}MB"
+    return False, f"piped invalid v={szv}B a={sza}B"
+
+
+def piped_phase(vid, dest, min_height):
+    """Try all piped APIs sequentially (they rate-limit parallel hard)."""
+    for api in PIPED_APIS:
+        res, err = piped_probe(api, vid)
+        if not res:
+            print(f"piped miss {api}: {err}", flush=True)
+            continue
+        print(f"PIPED HIT {api} h={res['h']} title={str(res.get('title'))[:40]!r}", flush=True)
+        try:
+            ok, detail = piped_download(api, res, dest)
+        except subprocess.CalledProcessError as e:
+            ok, detail = False, f"piped mux failed: {e}"
+        print(("OK " if ok else "fail ") + detail, flush=True)
+        if ok and os.path.isfile(dest):
+            return api, detail
+    return None, "all piped failed"
 
 
 def try_instance(base, res, dest):
@@ -239,7 +319,18 @@ def main():
             sys.exit(0)
     json.dump({"instances_tried": len(diag), "winner": None,
                "diagnostics": diag}, open("reports/acquisition_report.json", "w"), indent=1)
-    print("ALL DOWNLOADS FAILED", flush=True)
+
+    # ---- phase 2: piped hunt ----
+    print("phase 2: piped hunt", flush=True)
+    winner, detail = piped_phase(a.video_id, a.dest, a.min_height)
+    if winner:
+        json.dump({"winner": winner, "via": "piped", "detail": detail},
+                  open("reports/acquisition_report.json", "w"), indent=1)
+        dur = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries",
+                                       "format=duration", "-of", "csv=p=0", a.dest]).decode().strip()
+        print(f"OK dur={dur}s via={winner}", flush=True)
+        sys.exit(0)
+    print("ALL PATHS FAILED", flush=True)
     sys.exit(1)
 
 

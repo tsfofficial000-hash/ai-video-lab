@@ -80,7 +80,7 @@ jobs:
 
           # auto aesthetic stats (creative review appended in Phase 3)
           python3 - <<'PY'
-          import json, subprocess, re, glob
+          import json, subprocess, re, glob, os
           plan = json.load(open('delivery/edit_plan.json'))
           qc = json.load(open('delivery/qc_report.json'))
           segs = plan.get('segments', [])

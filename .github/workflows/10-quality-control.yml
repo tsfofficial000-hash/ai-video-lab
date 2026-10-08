@@ -17,8 +17,11 @@ jobs:
       - name: QC gate + auto-repair
         run: |
           set -e
-          cd scripts/cineforge && python3 qc.py --video ../final/out/final.mp4 \
-            --plan ../plan/reports/edit_plan.json --reports ../../reports
+          FV=$(python3 -c "import glob;c=glob.glob('final/**/final.mp4',recursive=True);print(c[0]);assert c")
+          PL=$(python3 -c "import glob;c=glob.glob('plan/**/edit_plan.json',recursive=True)+glob.glob('reports/edit_plan.json');print(c[0]);assert c")
+          echo "final=$FV plan=$PL"
+          cd scripts/cineforge && python3 qc.py --video "../../$FV" \
+            --plan "../../$PL" --reports ../../reports
       - uses: actions/upload-artifact@v4
         with:
           name: stage-10-qc

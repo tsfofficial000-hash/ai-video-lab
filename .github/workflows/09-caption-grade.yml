@@ -24,16 +24,22 @@ jobs:
         run: |
           set -e
           CS=$(python3 -c "import json;p=json.load(open('plan/reports/edit_plan.json'));print(p.get('caption_style') or '')")
-          CS="${{ inputs.caption_style || '' }}"; CS="${CS:-$(python3 -c "import json;p=json.load(open('plan/reports/edit_plan.json'));print(p.get('caption_style') or '')")}"
-          cd scripts/cineforge
+          MP=$(python3 -c "import glob;c=glob.glob('plan/**/edit_plan.json',recursive=True)+glob.glob('reports/edit_plan.json');print(c[0]);assert c")
+          TR=$(python3 -c "import glob;c=glob.glob('transcript/**/transcript.json',recursive=True)+glob.glob('reports/transcript.json');print(c[0]);assert c")
+          MV=$(python3 -c "import glob;c=glob.glob('render/**/master.mp4',recursive=True);print(c[0]);assert c")
+          CS="${{ inputs.caption_style || '' }}"
+          CS="${CS:-$(python3 -c "import json,sys;p=json.load(open(sys.argv[1]));print(p.get('caption_style') or '')" "$MP")}"
+          mkdir -p out media
           if [ -n "$CS" ]; then
-            python3 captions.py --transcript ../transcript/reports/transcript.json \
-              --plan ../plan/reports/edit_plan.json --style "$CS" --out ../media/captions.ass
-            ffmpeg -v error -y -i ../render/out/master.mp4 -vf "ass=../media/captions.ass" \
+            cd scripts/cineforge
+            python3 captions.py --transcript "../../$TR" \
+              --plan "../../$MP" --style "$CS" --out ../media/captions.ass
+            cd ../..
+            ffmpeg -v error -y -i "$MV" -vf "ass=media/captions.ass" \
               -c:v libx264 -preset medium -crf 19 -pix_fmt yuv420p -c:a copy \
-              -movflags +faststart ../out/final.mp4
+              -movflags +faststart out/final.mp4
           else
-            cp ../render/out/master.mp4 ../out/final.mp4
+            cp "$MV" out/final.mp4
           fi
           cd ../.. && ffprobe -v error -show_entries format=duration,size -of default=nw=1 out/final.mp4
       - uses: actions/upload-artifact@v4

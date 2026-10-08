@@ -25,12 +25,12 @@ jobs:
         run: |
           set -e
           mkdir -p delivery
-          cp final/out/final.mp4 delivery/cineforge_final.mp4
-          cp final/out/poster.jpg delivery/poster.jpg 2>/dev/null || true
-          cp transcript/reports/subtitles.srt delivery/ 2>/dev/null || true
-          cp transcript/reports/transcript.txt delivery/ 2>/dev/null || true
-          cp plan/reports/edit_plan.json delivery/ 2>/dev/null || true
-          cp reports00/reports/environment.json delivery/ 2>/dev/null || true
+          cp $(python3 -c "import glob;print(glob.glob('final/**/final.mp4',recursive=True)[0])") delivery/cineforge_final.mp4
+          cp $(python3 -c "import glob;print((glob.glob('final/**/poster.jpg',recursive=True)+['x'])[0])") delivery/poster.jpg 2>/dev/null || true
+          cp $(python3 -c "import glob;print(glob.glob('transcript/**/subtitles.srt',recursive=True)[0])") delivery/ 2>/dev/null || true
+          cp $(python3 -c "import glob;print(glob.glob('transcript/**/transcript.txt',recursive=True)[0])") delivery/ 2>/dev/null || true
+          cp $(python3 -c "import glob;print(glob.glob('plan/**/edit_plan.json',recursive=True)[0])") delivery/ 2>/dev/null || true
+          cp $(python3 -c "import glob;print(glob.glob('reports00/**/environment.json',recursive=True)[0])") delivery/ 2>/dev/null || true
           cp reports/latency.json delivery/ 2>/dev/null || true
           cp reports/qc_report.json delivery/ 2>/dev/null || true
           cp reports/media_manifest.json delivery/ 2>/dev/null || true

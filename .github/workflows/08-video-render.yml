@@ -23,14 +23,19 @@ jobs:
       - name: Dry-run gate (2-segment micro render)
         run: |
           set -e
+          TL=$(python3 -c "import glob;c=glob.glob('plan/**/timeline.json',recursive=True)+glob.glob('out/timeline.json');print(c[0]);assert c" )
+          echo "timeline=$TL"
           cd scripts/cineforge && python3 render_ffmpeg.py --source ../../source.mp4 \
-            --timeline ../plan/out/timeline.json --dryrun
+            --timeline "../$TL" --dryrun
       - name: Full render (segments -> xfade master -> mix mux)
         run: |
           set -e
+          TL=$(python3 -c "import glob;c=glob.glob('plan/**/timeline.json',recursive=True)+glob.glob('out/timeline.json');print(c[0]);assert c")
+          PL=$(python3 -c "import glob;c=glob.glob('plan/**/edit_plan.json',recursive=True)+glob.glob('reports/edit_plan.json');print(c[0]);assert c")
+          MX=$(python3 -c "import glob;c=glob.glob('mix/**/mixed_audio.wav',recursive=True)+glob.glob('media/mixed_audio.wav');print(c[0] if c else '')")
           cd scripts/cineforge && python3 render_ffmpeg.py --source ../../source.mp4 \
-            --timeline ../plan/out/timeline.json --plan ../plan/reports/edit_plan.json \
-            --mixed ../mix/media/mixed_audio.wav --out ../../out/master.mp4 \
+            --timeline "../$TL" --plan "../$PL" \
+            --mixed "../$MX" --out ../../out/master.mp4 \
             ${{ inputs.draft == 'true' && '--draft' || '' }}
           cd ../.. && ffprobe -v error -show_entries format=duration,size -of default=nw=1 out/master.mp4
       - uses: actions/upload-artifact@v4

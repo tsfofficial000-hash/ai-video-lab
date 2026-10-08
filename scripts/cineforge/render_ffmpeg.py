@@ -12,11 +12,40 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MONTAGE = os.path.join(HERE, "..", "montage")
+REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 
 
 def sh(cmd, **kw):
     print("+", " ".join(cmd[:6]), "...", flush=True)
     subprocess.run(cmd, check=True, **kw)
+
+
+def load_grades(repo_root=None):
+    import json
+    root = repo_root or REPO_ROOT
+    path = os.path.join(root, "configs", "grades.json")
+    with open(path) as f:
+        return json.load(f)
+
+
+def apply_grade(src, grade_name, out, repo_root=None):
+    """Single grade application point (defect D5): configs/grades.json supplies the
+    filter chain; plan.color_grade selects the entry. Applied exactly once, after
+    master assembly (and mix mux), before captions so burned text stays clean."""
+    grades = load_grades(repo_root)
+    g = grades.get(grade_name)
+    if not g:
+        print(f"[grade] '{grade_name}' not in grades.json - copying ungraded", flush=True)
+        import shutil
+        shutil.copyfile(src, out)
+        return out
+    vf = g["filters"]
+    print(f"[grade] applying {grade_name}: {vf}", flush=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", src,
+                    "-vf", vf, "-c:v", "libx264", "-preset", "veryfast",
+                    "-crf", "19", "-pix_fmt", "yuv420p", "-c:a", "copy",
+                    "-movflags", "+faststart", out], check=True)
+    return out
 
 
 def main():
@@ -68,6 +97,14 @@ def main():
             "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
             "-shortest", "-movflags", "+faststart", "out/_av.mp4"])
         cur = "out/_av.mp4"
+
+    # ---- grade (D5: single application point, from configs/grades.json) ----
+    grade = plan.get("color_grade") or "natural"
+    if not a.draft or os.environ.get("CF_GRADE_DRAFT") == "1":
+        apply_grade(cur, grade, "out/_graded.mp4", repo_root=REPO_ROOT)
+        cur = "out/_graded.mp4"
+    else:
+        print(f"[render] draft path: grade '{grade}' deferred to final pass", flush=True)
 
     # ---- captions burn-in (libass) ----
     if a.captions and os.path.isfile(a.captions):

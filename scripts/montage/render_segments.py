@@ -96,7 +96,7 @@ def render_one(args_tuple):
            "-filter_complex", fc, "-map", "[v]", "-map", "[a]",
            "-c:v", "libx264", "-preset", preset, "-crf", str(crf),
            "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-           "-r", str(meta["out_fps"]), "-vsync", "cfr", "-shortest", out]
+           "-r", str(meta["out_fps"]), "-vsync", "cfr", out]
     with open(log, "w") as lf:
         p = subprocess.run(cmd, stdout=lf, stderr=lf)
     if p.returncode != 0:

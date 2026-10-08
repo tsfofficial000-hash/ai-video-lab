@@ -40,11 +40,15 @@ def find_font():
 
 
 def real_duration(path):
-    """Actual file duration (frames are the ground truth for xfade offsets)."""
+    """VIDEO stream duration (frames are the ground truth for xfade offsets).
+    The container duration follows the audio (aac priming makes it longer),
+    which starved the xfade chain of frames after ~2 segments on ffmpeg 6.1."""
     import json as _json
     out = subprocess.check_output(["ffprobe", "-v", "error", "-print_format", "json",
-                                   "-show_format", path]).decode()
-    return float(_json.loads(out)["format"]["duration"])
+                                   "-select_streams", "v:0", "-show_entries",
+                                   "stream=duration", path]).decode()
+    d = _json.loads(out)["streams"][0].get("duration")
+    return float(d) if d is not None else 0.0
 
 
 def xfade_chain(n, segs, ow, oh, fps):

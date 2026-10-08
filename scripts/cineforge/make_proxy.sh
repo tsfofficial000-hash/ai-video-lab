@@ -34,6 +34,22 @@ PY
 ffmpeg -v error -y -i "$SRC" -vf "scale=480:270:force_original_aspect_ratio=decrease,setsar=1" \
   -c:v libx264 -preset veryfast -crf 26 -an "$WD/media/proxy.mp4"
 [ -s "$WD/media/proxy.mp4" ] || { echo "FATAL: proxy.mp4 empty - luma gate would be dead"; exit 1; }
+# active-picture detection (baked-in letterbox: e.g. 2.35:1 content inside 16:9)
+CROP=$(ffmpeg -hide_banner -i "$SRC" -vf "cropdetect=limit=24:round=2:reset=0" -frames:v 90 -f null - 2>&1 | grep -ao "crop=[0-9:]*" | sort | uniq -c | sort -rn | head -1 | awk '{print $2}' | cut -c6-)
+if [ -n "$CROP" ]; then
+  CW=$(echo "$CROP" | cut -d: -f1); CH=$(echo "$CROP" | cut -d: -f2)
+  python3 - "$WD" "$CW" "$CH" <<'PY'
+import json, sys
+wd, cw, ch = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+p = f"{wd}/reports/source_metadata.json"
+m = json.load(open(p))
+iw, ih = m["width"], m["height"]
+if cw <= iw * 0.97 and ch <= ih * 0.97:   # meaningful bars only
+    m["active_crop"] = {"w": cw, "h": ch}
+    json.dump(m, open(p, "w"), indent=1)
+    print(f"active_crop: {cw}x{ch} (source {iw}x{ih})")
+PY
+fi
 # audio wav for analysis
 ffmpeg -v error -y -i "$SRC" -vn -ac 1 -ar 22050 "$WD/media/audio.wav"
 # contact sheet: 4x4 thumbnails

@@ -27,8 +27,10 @@ def even(x):
 def fg_geometry(meta, zoom):
     """Foreground window geometry per vertical mode.
     cover_crop/smart_crop -> fill canvas (full-bleed, crop = canvas size from a
-    zoomed fill); blur_fill -> contain-fit (fallback layout)."""
-    sw, sh = meta["src_w"], meta["src_h"]
+    zoomed fill); blur_fill -> contain-fit (fallback layout).
+    Geometry uses the ACTIVE picture area when letterbox was detected."""
+    ac = meta.get("active_crop")
+    sw, sh = (ac["w"], ac["h"]) if ac else (meta["src_w"], meta["src_h"])
     ow, oh = meta["out_w"], meta["out_h"]
     mode = meta.get("vertical", "cover_crop")
     if mode in ("cover_crop", "smart_crop"):
@@ -57,12 +59,15 @@ def seg_filter(meta, seg):
     ow, oh = meta["out_w"], meta["out_h"]
     fps = meta["out_fps"]
     mode = meta.get("vertical", "cover_crop")
+    # baked-in letterbox: pre-crop to the detected active picture area (D: spec 2.2)
+    ac = meta.get("active_crop")
+    pre = f"crop={ac['w']}:{ac['h']}:(iw-{ac['w']})/2:(ih-{ac['h']})/2," if ac else ""
     # uniform speed handling: decode 2x fps, rescale pts, resample to out fps
     chain = f"fps={fps*2},setpts=PTS/{seg['speed']:.6f},fps={fps}"
     if mode in ("cover_crop", "smart_crop"):
         x, y = crop_origin(meta, seg, fw, fh, cw, ch)
         v = (
-            f"[0:v]null,{chain},scale={fw}:{fh},crop={cw}:{ch}:{x}:{y},"
+            f"[0:v]null,{pre}{chain},scale={fw}:{fh},crop={cw}:{ch}:{x}:{y},"
             f"setsar=1,scale={ow}:{oh},format=yuv420p,"
             f"trim=duration={seg['out_dur']:.3f},setpts=PTS-STARTPTS[v]"
         )

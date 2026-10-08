@@ -246,6 +246,8 @@ def main():
                     "title_main": plan["title_main"], "title_sub": plan["title_sub"],
                     "preview": False, "n_segments": len(segments),
                     "vertical": plan["vertical_plan"],
+                    "suppress_title": bool(hook_text),
+                    "active_crop": meta.get("active_crop"),
                     "selection_audit": audit},
            "segments": segments}, f"{a.out}/timeline.json")
     jdump(audit, f"{a.reports}/selection_audit.json")

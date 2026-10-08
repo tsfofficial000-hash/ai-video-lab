@@ -124,15 +124,19 @@ def main():
     fs_end = int(ow * 0.052)
     fs_end2 = int(ow * 0.026)
 
+    # when the plan carries an ASS hook line, the burned hook replaces the
+    # generic title card (avoids two competing texts in the first 2.5s)
+    suppress_title = bool(meta.get("suppress_title"))
+
     alpha_in = ("if(lt(t,1.0),0,if(lt(t,1.6),(t-1.0)/0.6,"
                 "if(lt(t,3.6),1,if(lt(t,4.2),(4.2-t)/0.6,0))))")
-    overlays = [
+    overlays = ([] if suppress_title else [
         f"drawtext=fontfile={font}:textfile={txt['main']}:fontsize={fs_main}:"
         f"fontcolor=white:borderw=3:bordercolor=black@0.55:x=(w-text_w)/2:y=h*0.36:"
         f"alpha='{alpha_in}':enable='between(t,1.0,4.2)'",
         f"drawtext=fontfile={font}:textfile={txt['sub']}:fontsize={fs_sub}:"
         f"fontcolor=white@0.92:borderw=2:bordercolor=black@0.5:x=(w-text_w)/2:y=h*0.36+{fs_main}+28:"
-        f"alpha='{alpha_in}':enable='between(t,1.0,4.2)'",
+        f"alpha='{alpha_in}':enable='between(t,1.0,4.2)'"]) + [
         f"drawtext=fontfile={font}:textfile={txt['end1']}:fontsize={fs_end}:"
         f"fontcolor=white:borderw=3:bordercolor=black@0.55:x=(w-text_w)/2:y=h*0.44:"
         f"alpha='if(lt(t,{total-2.6:.2f}),0,if(lt(t,{total-2.1:.2f}),(t-{total-2.6:.2f})/0.5,1))':"
@@ -150,7 +154,7 @@ def main():
         # doubles the detectable black region (G1 budget)
         fades.append(f"fade=t=out:st={max(0.0,total-0.7):.3f}:d=0.7")
     post_v = ",".join(overlays + fades)
-    post_a = (f"loudnorm=I=-14:TP=-1.5:LRA=11,"
+    post_a = (f"loudnorm=I=-16:TP=-1.5:LRA=11,"
               f"afade=t=out:st={max(0.0,total-0.9):.3f}:d=0.9")
 
     graph = ";".join(vparts + apart + [

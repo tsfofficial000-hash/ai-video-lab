@@ -31,6 +31,11 @@ jobs:
           set -e
           chmod +x scripts/montage/acquire_source.sh
           URL="${{ inputs.source_url }}"
+          if [ "$URL" = "source-v1" ]; then
+            # direct release-cache rung (v2 gate runs start from the self-healed asset)
+            gh release download source-v1 -p "source.mp4" --repo "$GITHUB_REPOSITORY" --clobber \
+              || echo "source-v1 empty - falling through to ladder"
+          fi
           if [ -z "$URL" ] || [ "$URL" = "sample" ] || [ "$URL" = "none" ]; then
             # safe open-license chain: Blender Sintel trailer (CC-BY, cinematic, music-rich)
             curl -sSL --fail --retry 2 --max-time 300 -o source.mp4 \
@@ -40,7 +45,7 @@ jobs:
               || echo "SAMPLE_CHAIN_FAILED"
             ls -la source.mp4 2>/dev/null || true
           fi
-          if [ ! -s source.mp4 ]; then
+          if [ ! -s source.mp4 ] && [ -n "$URL" ] && [ "$URL" != "source-v1" ]; then
             bash scripts/montage/acquire_source.sh "$URL" source.mp4 source-v1
           fi
           ffprobe -v error -show_entries format=duration -of csv=p=0 source.mp4

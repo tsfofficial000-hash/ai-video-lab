@@ -46,8 +46,9 @@ jobs:
             gh release create cineforge-v1 --repo "$GITHUB_REPOSITORY" \
               --title "CineForge Pro — autonomous edit" \
               --notes "Run ${{ github.run_id }} — final video + SRT + plan + QC + latency" || true
-          gh release upload cineforge-v1 delivery/cineforge_final.mp4 delivery/poster.jpg \
-            --repo "$GITHUB_REPOSITORY" --clobber || true
+          for f in delivery/cineforge_final.mp4 delivery/poster.jpg; do
+            [ -f "$f" ] && gh release upload cineforge-v1 "$f" --repo "$GITHUB_REPOSITORY" --clobber || true
+          done
           echo "release: https://github.com/$GITHUB_REPOSITORY/releases/tag/cineforge-v1"
 
       - name: Commit logs

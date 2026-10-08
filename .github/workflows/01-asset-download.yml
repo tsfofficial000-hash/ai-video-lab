@@ -32,9 +32,11 @@ jobs:
           chmod +x scripts/montage/acquire_source.sh
           URL="${{ inputs.source_url }}"
           if [ -z "$URL" ]; then
-            # safe open-license fallback: Big Buck Bunny 10s clip (Blender Foundation, CC-BY)
+            # safe open-license chain: Blender Sintel trailer (CC-BY, cinematic, music-rich)
             curl -sL --max-time 300 -o source.mp4 \
-              "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4" || true
+              "https://download.blender.org/durian/trailer/sintel_trailer-1080p.mp4" || true
+            [ -s source.mp4 ] || curl -sL --max-time 300 -o source.mp4 \
+              "https://download.blender.org/durian/trailer/sintel_trailer-720p.mp4" || true
           fi
           if [ ! -s source.mp4 ]; then
             bash scripts/montage/acquire_source.sh "$URL" source.mp4 source-v1

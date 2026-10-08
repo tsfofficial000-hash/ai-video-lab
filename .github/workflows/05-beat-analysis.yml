@@ -20,5 +20,4 @@ jobs:
             $(python3 -c "import json;print(json.load(open('../../reports/source_metadata.json'))['duration'])")
           cd ../.. && python3 -c "import json;b=json.load(open('reports/beats.json'));print('tempo',b['tempo'],'beats',b['beat_count'])"
       - uses: actions/upload-artifact@v4
-        with: { name: stage-05-beats, path: reports/beats.json }
-        retention-days: 3
+        with: { name: stage-05-beats, path: reports/beats.json, retention-days: 3 }

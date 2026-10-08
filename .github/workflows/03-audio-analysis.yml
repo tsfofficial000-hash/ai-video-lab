@@ -17,5 +17,4 @@ jobs:
           cd scripts/cineforge && python3 audio_analysis.py --audio ../../media/audio.wav --reports ../../reports
           cd ../.. && cat reports/audio_analysis.json | head -20
       - uses: actions/upload-artifact@v4
-        with: { name: stage-03-audio, path: reports/audio_analysis.json }
-        retention-days: 3
+        with: { name: stage-03-audio, path: reports/audio_analysis.json, retention-days: 3 }

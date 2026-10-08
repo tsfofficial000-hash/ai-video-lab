@@ -37,8 +37,7 @@ jobs:
           ls -la delivery/
 
       - uses: actions/upload-artifact@v4
-        with: { name: cineforge-delivery, path: delivery/ }
-        retention-days: 30
+        with: { name: cineforge-delivery, path: delivery/, retention-days: 30 }
 
       - name: Publish release cineforge-v1
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }

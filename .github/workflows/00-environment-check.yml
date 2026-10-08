@@ -23,5 +23,4 @@ jobs:
           set -e
           python3 scripts/cineforge/env_check.py && echo "ok=true" >> "$GITHUB_OUTPUT" || { echo "ok=false" >> "$GITHUB_OUTPUT"; exit 1; }
       - uses: actions/upload-artifact@v4
-        with: { name: stage-00-reports, path: reports/ }
-        retention-days: 3
+        with: { name: stage-00-reports, path: reports/, retention-days: 3 }

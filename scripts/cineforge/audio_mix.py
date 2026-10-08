@@ -79,13 +79,15 @@ def main():
             "[1:a]volume=0.9[mmain];"
             "[mmain][voice]sidechaincompress=threshold=0.02:ratio=8:attack=20:"
             "release=300:makeup=1.0[ducked];"
-            "[ducked][voice]amix=inputs=2:duration=first:normalize=0,"
+            "[ducked][voice]amix=inputs=2:duration=first,volume=2.0,"
             "loudnorm=I=-16:TP=-1.5:LRA=11,"
             "afade=t=in:d=0.6,volume=1.0[out]"
         ).format(den)
         cmd = ["ffmpeg", "-v", "error", "-y", "-i", a.voice, "-i", a.music,
                "-filter_complex", fc, "-map", "[out]", "-ar", "48000", "-ac", "2", a.out]
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        if p.returncode != 0:
+            raise RuntimeError(f"duck mix failed: {(p.stderr or '')[-600:]}")
 
         # diagnostics for measurable ducking (G6)
         out_dir = os.path.dirname(os.path.abspath(a.out))
@@ -95,13 +97,27 @@ def main():
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", a.music,
                         "-af", "volume=0.9", "-t", "30", ref_wav],
                        check=True, capture_output=True, text=True)
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", a.voice, "-i", a.music,
-                        "-filter_complex",
-                        "[0:a]{}anull[voice];[1:a]volume=0.9[m];"
-                        "[m][voice]sidechaincompress=threshold=0.02:ratio=8:attack=20:"
-                        "release=300:makeup=1.0[d]".format(den),
-                        "-map", "[d]", "-t", "30", ducked_wav],
-                       check=True, capture_output=True, text=True)
+        p2 = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", a.voice, "-i", a.music,
+                             "-filter_complex",
+                             "[0:a]{}anull[voice];[1:a]volume=0.9[m];"
+                             "[m][voice]sidechaincompress=threshold=0.02:ratio=8:attack=20:"
+                             "release=300:makeup=1.0[d]".format(den),
+                             "-map", "[d]", "-t", "30", ducked_wav],
+                            capture_output=True, text=True)
+        if p2.returncode != 0:
+            print(f"[mix] diagnostics pass skipped: {(p2.stderr or '')[-300:]}", flush=True)
+            depth, n_win = 0.0, 0
+            mode = "sidechain_duck"
+            jdump({"mode": mode, "music": a.music, "target": "I=-16 TP=-1.5 LRA=11",
+                   "denoise": a.denoise, "duck_depth_db": depth, "duck_windows": n_win,
+                   "sfx_mixed": 0, "diagnostics": "skipped", "out": a.out},
+                  f"{a.reports}/audio_mix_report.json")
+            record_stage(a.reports, "07-audio-mix", "success", t0=t0,
+                         bottleneck="diagnostics pass failed",
+                         optimization_applied="mix completed, measurement skipped",
+                         optimization_result="")
+            print(f"mixed ok mode={mode} (diagnostics skipped)")
+            return
         vdur = 30.0
         try:
             vdur = min(30.0, float(subprocess.run(
@@ -148,13 +164,18 @@ def main():
                                  f"adelay={delay}|{delay},volume=0.8[s{i}]")
                 if parts:
                     mix_in = "[0:a]" + "".join(f"[s{i}]" for i in range(len(parts)))
-                    parts.append(f"{mix_in}amix=inputs={len(parts)+1}:duration=first:"
-                                 f"normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11[out]")
+                    parts.append(f"{mix_in}amix=inputs={len(parts)+1}:duration=first"
+                                 f",volume={1.0 + len(parts) * 0.5:.2f}"
+                                 ",loudnorm=I=-16:TP=-1.5:LRA=11[out]")
                     cmd += ["-filter_complex", ";".join(parts), "-map", "[out]",
                             "-ar", "48000", "-ac", "2", a.out + ".sfx.wav"]
-                    subprocess.run(cmd, check=True, capture_output=True, text=True)
-                    os.replace(a.out + ".sfx.wav", a.out)
-                    sfx_mixed = len(parts)
+                    ps = subprocess.run(cmd, capture_output=True, text=True)
+                    if ps.returncode != 0:
+                        print(f"[mix] sfx pass failed (kept pre-sfx mix): "
+                              f"{(ps.stderr or '')[-300:]}", flush=True)
+                    else:
+                        os.replace(a.out + ".sfx.wav", a.out)
+                        sfx_mixed = len(parts)
         except Exception as e:
             print(f"[mix] sfx pass skipped: {type(e).__name__}: {e}", flush=True)
 

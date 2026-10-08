@@ -32,7 +32,7 @@ def main():
     a = ap.parse_args()
 
     tl = json.load(open(a.timeline))
-    plan = json.load(open(a.plan))
+    plan = json.load(open(a.plan)) if (a.plan and os.path.isfile(a.plan)) else {}
     segs = tl["segments"]
     draft = a.draft or a.dryrun
 

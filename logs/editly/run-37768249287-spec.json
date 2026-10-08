@@ -1,0 +1,94 @@
+{
+  "outPath": "final_editly.mp4",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "clips": [
+    {
+      "duration": 6.0,
+      "layers": [
+        {
+          "type": "video",
+          "path": "footage_src",
+          "cutFrom": 3,
+          "cutTo": 9,
+          "resizeMode": "contain-blur"
+        },
+        {
+          "type": "title",
+          "text": "AI VIDEO LAB",
+          "fontPath": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+          "textColor": "#ffffff",
+          "position": "top",
+          "start": 0.3,
+          "stop": 3.5
+        },
+        {
+          "type": "subtitle",
+          "text": "Welcome to the iVidual Lab.",
+          "fontPath": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+          "textColor": "#ffffff",
+          "start": 0.0,
+          "stop": 2.0
+        },
+        {
+          "type": "subtitle",
+          "text": "This animation was synthesized on a bit of action slaughter.",
+          "fontPath": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+          "textColor": "#ffffff",
+          "start": 2.0,
+          "stop": 6.0
+        },
+        {
+          "type": "detached-audio",
+          "path": "narration.wav",
+          "cutFrom": 0,
+          "cutTo": 10.7,
+          "mixVolume": 1.4,
+          "start": 0.3
+        }
+      ]
+    },
+    {
+      "duration": 6.0,
+      "transition": {
+        "type": "fade",
+        "duration": 1
+      },
+      "layers": [
+        {
+          "type": "video",
+          "path": "footage_src",
+          "cutFrom": 12,
+          "cutTo": 18,
+          "resizeMode": "contain-blur"
+        },
+        {
+          "type": "title",
+          "text": "EDITLY JSON EDIT",
+          "fontPath": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+          "textColor": "#ffffff",
+          "position": "top",
+          "start": 0,
+          "stop": 3
+        },
+        {
+          "type": "subtitle",
+          "text": "This animation was synthesized on a bit of action slaughter.",
+          "fontPath": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+          "textColor": "#ffffff",
+          "start": 0,
+          "stop": 1.0
+        },
+        {
+          "type": "subtitle",
+          "text": "Whisker will transcribe it, and FFM pack will earn us a title pack.",
+          "fontPath": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+          "textColor": "#ffffff",
+          "start": 1.0,
+          "stop": 6.0
+        }
+      ]
+    }
+  ]
+}

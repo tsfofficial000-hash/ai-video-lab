@@ -56,16 +56,41 @@ def probe(base, vid):
         if "error" in d:
             return (base, None, f"api:{str(d['error'])[:60]}")
         adaptive = d.get("adaptiveFormats") or []
+        muxed = d.get("formatStreams") or []
+
         def h(f):
-            m = re.match(r"(\d+)x", f.get("resolution") or "")
+            r = f.get("resolution") or ""
+            m = re.match(r"(\d+)x", r)          # "1920x1080"
+            if m:
+                return int(m.group(1))
+            m = re.match(r"(\d+)p", r)           # "1080p"
+            if m:
+                return int(m.group(1))
+            m = re.match(r"(\d+)", r)            # bare "1080"
             return int(m.group(1)) if m else 0
-        v = sorted([f for f in adaptive if f.get("type", "").startswith("video/mp4") and h(f) >= 720],
-                   key=h, reverse=True)
-        a = [f for f in adaptive if f.get("type", "").startswith("audio/mp4")]
-        if v and a:
+
+        def key(f):
+            return (1 if (f.get("type") or "").startswith("video/mp4") else 0, h(f))
+
+        v = sorted([f for f in adaptive if (f.get("type", "").startswith("video/") and
+                    h(f) >= a.min_height)], key=key, reverse=True)
+        a_fmt = sorted([f for f in adaptive if f.get("type", "").startswith("audio/")],
+                       key=lambda f: int(f.get("bitrate") or 0), reverse=True)
+        mlist = sorted([f for f in muxed if h(f) >= min(a.min_height, 720)], key=h, reverse=True)
+        if v and a_fmt:
             return (base, {"title": d.get("title"), "dur": d.get("lengthSeconds"),
-                           "v_url": v[0]["url"], "v_h": h(v[0]), "a_url": a[0]["url"]}, None)
-        return (base, None, f"no-mp4-pairs (n={len(adaptive)})")
+                           "v_url": v[0]["url"], "v_h": h(v[0]),
+                           "v_type": v[0].get("type", ""),
+                           "a_url": a_fmt[0]["url"],
+                           "a_type": a_fmt[0].get("type", ""),
+                           "muxed_url": mlist[0]["url"] if mlist else None}, None)
+        if mlist:
+            return (base, {"title": d.get("title"), "dur": d.get("lengthSeconds"),
+                           "v_url": None, "v_h": h(mlist[0]), "v_type": mlist[0].get("type", ""),
+                           "a_url": None, "a_type": "",
+                           "muxed_url": mlist[0]["url"]}, None)
+        return (base, None, f"no-pairs (adaptive={len(adaptive)} muxed={len(muxed)} "
+                            f"hs={[h(f) for f in adaptive[:6]]})")
     except Exception as e:
         return (base, None, f"{type(e).__name__}: {str(e)[:60]}")
 
@@ -116,12 +141,19 @@ def main():
         sys.exit(1)
 
     base, res = hit
-    tmp_v, tmp_a = "/tmp/_v.mp4", "/tmp/_a.m4a"
-    print(f"downloading v({res['v_h']}p)+a via {base}", flush=True)
-    download(res["v_url"], tmp_v)
-    download(res["a_url"], tmp_a)
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp_v, "-i", tmp_a,
-                    "-c", "copy", "-movflags", "+faststart", a.dest], check=True)
+    tmp_v, tmp_a = "/tmp/_v.f", "/tmp/_a.f"
+    ext = lambda t: (".mp4" if "mp4" in (t or "") else ".webm" if "webm" in (t or "") else ".m4a")
+    print(f"downloading v({res['v_h']}p) via {base}", flush=True)
+    if res.get("muxed_url") and not res.get("v_url"):
+        download(res["muxed_url"], tmp_v + ext(res["v_type"]))
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp_v + ext(res["v_type"]),
+                        "-c", "copy", "-movflags", "+faststart", a.dest], check=True)
+    else:
+        download(res["v_url"], tmp_v + ext(res["v_type"]))
+        download(res["a_url"], tmp_a + ext(res["a_type"]))
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp_v + ext(res["v_type"]),
+                        "-i", tmp_a + ext(res["a_type"]),
+                        "-c", "copy", "-movflags", "+faststart", a.dest], check=True)
     dur = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries",
                                    "format=duration", "-of", "csv=p=0", a.dest]).decode().strip()
     print(f"OK dur={dur}s via={base}", flush=True)

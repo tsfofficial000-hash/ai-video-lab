@@ -1,5 +1,5 @@
 name: "Setup CineForge"
-description: "Python with pip cache, ffmpeg+fonts, cineforge requirements"
+description: "Python with pip cache, ffmpeg+fonts, cineforge requirements, OFL fonts + whisper caches"
 runs:
   using: "composite"
   steps:
@@ -8,6 +8,14 @@ runs:
         python-version: "3.11"
         cache: pip
         cache-dependency-path: requirements-cineforge.txt
+    - uses: actions/cache@v4
+      with:
+        path: media/fonts
+        key: fonts-v1
+    - uses: actions/cache@v4
+      with:
+        path: ~/.cache/huggingface
+        key: whisper-models-v1
     - name: Install stack
       shell: bash
       run: |
@@ -16,3 +24,8 @@ runs:
         sudo apt-get update -qq
         sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libgl1 libglib2.0-0
         ffmpeg -version | head -1
+    - name: OFL fonts (cached, never fails the run)
+      shell: bash
+      run: |
+        python3 scripts/cineforge/fetch_fonts.py --out media/fonts \
+          --report reports/fonts_report.json || echo "fonts fallback: DejaVu"

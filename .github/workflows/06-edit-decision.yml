@@ -29,15 +29,19 @@ jobs:
       - name: Build EDL
         run: |
           set -e
-          cd scripts/cineforge && python3 edit_plan.py --reports ../../reports --out ../../out \
+          PX=$(python3 -c "import glob;c=glob.glob('media/proxy.mp4');print(c[0] if c else '')")
+          echo "luma source proxy: $PX"
+          cd scripts/cineforge && CF_SOURCE_PATH="../../$PX" python3 edit_plan.py --reports ../../reports --out ../../out \
             --style "${{ inputs.style || 'beat_montage' }}" \
             --target-len "${{ inputs.target_len }}" \
             --title "${{ inputs.title || 'MONTAGE' }}"
-          cd ../.. && python3 -c "import json;p=json.load(open('reports/edit_plan.json'));print('style',p['style'],'target',p['target_duration'],'segs',len(p['segments']))"
+          cd ../.. && python3 -c "import json;p=json.load(open('reports/edit_plan.json'));print('style',p['style'],'target',p['target_duration'],'segs',len(p['segments']),'cps',p.get('cut_density_cps'),'align_ms',p.get('beat_alignment_ms'))"
       - uses: actions/upload-artifact@v4
         with:
           name: stage-06-plan
           path: |
             reports/edit_plan.json
+            reports/selection_audit.json
+            reports/luma.json
             out/timeline.json
           retention-days: 3

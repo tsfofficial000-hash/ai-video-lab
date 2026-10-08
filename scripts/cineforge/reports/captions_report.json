@@ -1,0 +1,49 @@
+{
+ "style": "viral_high_contrast",
+ "events": 3,
+ "cues": [
+  3.1,
+  5.35
+ ],
+ "font_caption": "Montserrat",
+ "font_hook": "Anton",
+ "fontsize": 107,
+ "margin_v": 291,
+ "hook_size": 168,
+ "licenses": {
+  "Montserrat": "OFL",
+  "Anton": "OFL"
+ },
+ "safe_zone_assert": {
+  "bottom": 288,
+  "margin_v": 291,
+  "within": true
+ },
+ "decisions": [
+  {
+   "cue": 0,
+   "element": "hook_card",
+   "placement": "y=576",
+   "reason": "hook_y_center per safe_zones",
+   "face": null
+  },
+  {
+   "cue": 3.1,
+   "element": "caption",
+   "placement": "marginV=291",
+   "lines": 2,
+   "keyword": "GATEKEEPERS",
+   "face": null,
+   "reason": "bottom_safe_zone"
+  },
+  {
+   "cue": 5.35,
+   "element": "caption",
+   "placement": "marginV=291",
+   "lines": 2,
+   "keyword": "GATEKEEPERS",
+   "face": null,
+   "reason": "bottom_safe_zone"
+  }
+ ]
+}

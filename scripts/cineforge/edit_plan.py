@@ -48,8 +48,22 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     tempo = beats.get("tempo") or (60.0 / 1.35)
     beat_period = 60.0 / max(tempo, 40.0)
     pacing = style_cfg.get("pacing", "energetic")
-    mult = {"slow": 2.6, "smooth": 1.8, "speech": 2.2, "fast": 1.0, "energetic": 1.4}.get(pacing, 1.4)
-    base_out = min(max(beat_period * mult, 0.55), 4.2)
+
+    # G7: cut density driven by the style band (cuts/second, spec 2.4)
+    band = style_cfg.get("cuts_band") or [1.2, 2.0]
+    cps_target = (band[0] + band[1]) / 2.0
+    base_out = 1.0 / cps_target
+    if style_cfg.get("cut_style") == "beat_grid" and len(beats_list) >= 8:
+        # snap to a quarter-beat-compatible multiplier to keep beat alignment
+        mults = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 6.0, 8.0]
+        k = min(mults, key=lambda m: abs(m * beat_period - base_out))
+        base_out = k * beat_period
+    base_out = round(min(max(base_out, 0.55), 6.0), 3)
+    achieved_cps = 1.0 / base_out
+    if not (band[0] - 0.05 <= achieved_cps <= band[1] + 0.05):
+        # clamp into band: pick base_out at band edge
+        base_out = round(min(max(base_out, 1.0 / band[1]), 1.0 / band[0]), 3)
+        achieved_cps = 1.0 / base_out
 
     n_target = max(6, int(round(target_len / base_out)))
 
@@ -105,19 +119,36 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
 
     soft = style_cfg.get("transitions") == "soft_fades"
     per_section = max(6, len(segs) // 3)
+    # spec 2.4: hard cut default (0.05 pseudo = 1-2 frames), fade <= 0.18,
+    # fadewhite ONLY at section boundaries <= 2 frames (0.067 @30fps),
+    # fadeblack ONLY as the final transition <= 0.4s
+    flash_dur = round(2.0 / 30.0, 3)
+    section_times = []
+    cum = 0.0
     for k in range(len(segs) - 1):
+        cum += segs[k]["out_dur"]
         if soft:
             segs[k]["transition_after"] = {"type": "fade", "dur": 0.5}
         elif k == 0:
             segs[k]["transition_after"] = {"type": "fade", "dur": 0.18}
         elif (k + 1) == len(segs) - 1:
-            segs[k]["transition_after"] = {"type": "fadeblack", "dur": 0.3}
+            segs[k]["transition_after"] = {"type": "fadeblack", "dur": 0.4}
         elif (k + 1) % per_section == 0:
-            segs[k]["transition_after"] = {"type": style_cfg.get("section_flash", "fadewhite"), "dur": 0.14}
+            segs[k]["transition_after"] = {"type": "fadewhite", "dur": flash_dur}
+            section_times.append(round(cum, 2))
         else:
             segs[k]["transition_after"] = {"type": "fade", "dur": 0.05}
     if segs:
         segs[-1]["transition_after"] = {"type": "none", "dur": 0.0}
+
+    # G7 metric: median |cut - nearest beat| in ms (cuts sit on the beat grid)
+    import statistics
+    grid = sorted(set(round(b, 3) for b in beats_list))
+    devs = [min((abs(s["src_start"] - b) for b in grid), default=0.5) for s in segs]
+    beat_align_ms = round(1000 * statistics.median(devs), 1) if devs else 0.0
+    audit["beat_alignment_ms"] = beat_align_ms
+    audit["section_flash_times"] = section_times
+    audit["cut_density_target_cps"] = round(cps_target, 2)
     return segs, audit
 
 
@@ -147,6 +178,21 @@ def main():
     segments, audit = build_timeline(source_meta, beats, style_cfg, a.style, target)
     total = sum(s["out_dur"] for s in segments) - sum(
         s["transition_after"]["dur"] for s in segments[:-1])
+    cps = round(len(segments) / total, 2) if total else 0.0
+    section_times = audit.get("section_flash_times", [])
+
+    # synthesized SFX plan (zero downloads): impact at hook, whoosh at section flashes
+    sfx_events = []
+    if style_cfg.get("pacing") in ("energetic", "fast"):
+        sfx_events.append({"t": 0.0, "kind": "impact"})
+        sfx_events += [{"t": t, "kind": "whoosh"} for t in section_times]
+        peaks = beats.get("energy_peak_starts") or []
+        if peaks and len(segments) > 4:
+            hero_out = next((sum(s2["out_dur"] for s2 in segments[:i])
+                             for i, s2 in enumerate(segments)
+                             if abs(s2["src_start"] - peaks[0]) < 0.5), None)
+            if hero_out and hero_out > 1.5:
+                sfx_events.append({"t": round(hero_out - 1.2, 2), "kind": "riser"})
 
     hook_text = pick_hook(transcript, beats, style_cfg)
     plan = {
@@ -162,6 +208,10 @@ def main():
         },
         "segments": segments,
         "cut_points": [s["src_start"] for s in segments],
+        "cut_density_cps": cps,
+        "cuts_band": style_cfg.get("cuts_band"),
+        "beat_alignment_ms": audit.get("beat_alignment_ms", 0.0),
+        "sfx_events": sfx_events,
         "transition_types": list({s["transition_after"]["type"] for s in segments[:-1]}),
         "music_cut_alignment": "beat_grid" if beats.get("beats") else "uniform_grid",
         "caption_style": style_cfg.get("captions"),

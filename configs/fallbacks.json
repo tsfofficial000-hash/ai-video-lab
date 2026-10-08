@@ -3,7 +3,7 @@
     {
       "condition": "rembg_missing_or_slow",
       "action": "skip text-behind-subject, use normal title overlay",
-      "cost_note": "rembg on 2-core runner ~20-60s/frame-range; only first 3s would qualify"
+      "cost_note": "rembg on 4-core/16GB runner ~20-60s/frame-range; only first 3s would qualify"
     },
     {
       "condition": "mediapipe_missing_or_slow",
@@ -39,6 +39,16 @@
       "condition": "no_beats_detected",
       "action": "uniform 1.35s cut grid; scene-change alignment preferred",
       "cost_note": "graceful, proven in synthetic dry-run"
+    },
+    {
+      "condition": "fonts_fetch_fails",
+      "action": "fallback to DejaVu Sans Bold for captions/hook (record license note), never fail the run",
+      "cost_note": "DejaVu is preinstalled on ubuntu runners; zero latency"
+    },
+    {
+      "condition": "mediapipe_unavailable",
+      "action": "smart_crop degrades to center cover_crop; decision logged per cue",
+      "cost_note": "face-avoidance is best-effort; captions still land in safe zone"
     }
   ]
 }

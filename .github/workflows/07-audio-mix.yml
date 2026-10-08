@@ -14,16 +14,18 @@ jobs:
         with: { name: stage-01-assets }
       - uses: actions/download-artifact@v4
         with: { name: stage-06-plan, path: plan }
-      - name: Mix (ducking plan aware)
+      - name: Mix (ducking plan + synth SFX aware)
         run: |
           set -e
           MUSIC=$(python3 -c "import json;p=json.load(open('plan/reports/edit_plan.json'));print(p['audio_ducking_plan'].get('music') or '')")
           cd scripts/cineforge
           if [ -n "$MUSIC" ] && [ -f "../../$MUSIC" ]; then
             python3 audio_mix.py --voice ../../source.mp4 --music "../../$MUSIC" \
+              --plan "../../plan/reports/edit_plan.json" \
               --out ../../media/mixed_audio.wav --reports ../../reports
           else
             python3 audio_mix.py --voice ../../source.mp4 \
+              --plan "../../plan/reports/edit_plan.json" \
               --out ../../media/mixed_audio.wav --reports ../../reports
           fi
           cd ../.. && ffprobe -v error -show_entries format=duration -of csv=p=0 media/mixed_audio.wav
@@ -32,5 +34,7 @@ jobs:
           name: stage-07-mix
           path: |
             media/mixed_audio.wav
+            media/_ref_music.wav
+            media/_ducked_music.wav
             reports/audio_mix_report.json
           retention-days: 3

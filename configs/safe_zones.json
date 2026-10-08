@@ -1,0 +1,8 @@
+{
+  "top": 0.08,
+  "bottom": 0.15,
+  "sides": 0.06,
+  "caption_band": {"y0": 0.60, "y1": 0.92},
+  "hook_y_center": 0.30,
+  "notes": "Shorts/Reels UI-safe margins at 1080x1920; caption band kept above bottom-15% UI zone; hook centered at 30% height"
+}

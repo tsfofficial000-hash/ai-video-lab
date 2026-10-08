@@ -78,7 +78,26 @@ def main():
             "--jobs", "2", "--crf", "28", "--preset", "ultrafast"])
         sh([sys.executable, f"{MONTAGE}/assemble.py", "--timeline", "out/_dryrun_timeline.json",
             "--segdir", "out/_dryrun_segs", "--out", "out/_dryrun.mp4"])
-        print("[render] dry-run gate passed")
+        # typography + grade smoke (fail in <=60s, not at stage 9): grade the mini
+        # master and burn a 1-cue smoke ASS through the real font path
+        apply_grade("out/_dryrun.mp4", plan.get("color_grade") or "natural",
+                    "out/_dryrun_graded.mp4", repo_root=REPO_ROOT)
+        smoke = (
+            "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n"
+            "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+            "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, "
+            "Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+            "Style: Cine,Montserrat,100,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,1,0,0,0,"
+            "100,100,0,0,1,5,3,2,64,64,292,1\n"
+            "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+            "Dialogue: 0,0:00:00.00,0:00:02.00,Cine,,0,0,0,,SMOKE TEST CAPTION\n")
+        os.makedirs("media/fonts", exist_ok=True)
+        open("out/_smoke.ass", "w").write(smoke)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", "out/_dryrun_graded.mp4",
+                        "-vf", "ass=out/_smoke.ass:fontsdir=media/fonts",
+                        "-frames:v", "30", "-c:v", "libx264", "-preset", "ultrafast",
+                        "-crf", "28", "-an", "out/_dryrun_smoke.mp4"], check=True)
+        print("[render] dry-run gate passed (incl. grade + typography smoke)")
         return
 
     # ---- segments via proven engine ----

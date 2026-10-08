@@ -62,6 +62,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--voice", required=True, help="source video/wav carrying speech")
     ap.add_argument("--music", default=None, help="music track (mp3/wav)")
+    ap.add_argument("--plan", default=None, help="edit_plan.json for sfx_events")
     ap.add_argument("--out", default="media/mixed_audio.wav")
     ap.add_argument("--reports", default="reports")
     ap.add_argument("--denoise", action="store_true")
@@ -118,14 +119,53 @@ def main():
         depth, n_win = 0.0, 0
         mode = "voice_only"
 
+    # ---- synthesized SFX bed (zero downloads, zero rights) ----
+    sfx_mixed = 0
+    if a.plan and os.path.isfile(a.plan):
+        try:
+            import json as _json
+            from sfx import synth as sfx_synth
+            events = _json.load(open(a.plan)).get("sfx_events") or []
+            if events:
+                dur_s = None
+                try:
+                    dur_s = float(subprocess.run(
+                        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                         "-of", "csv=p=0", a.out], capture_output=True, text=True).stdout.strip())
+                except Exception:
+                    pass
+                cmd = ["ffmpeg", "-v", "error", "-y", "-i", a.out]
+                parts = []
+                for i, ev in enumerate(events[:8]):
+                    wav = f"/tmp/_cf_sfx_{i}.wav"
+                    try:
+                        sfx_synth(ev.get("kind", "whoosh"), wav)
+                    except Exception:
+                        continue
+                    cmd += ["-i", wav]
+                    delay = max(0, int(float(ev.get("t", 0)) * 1000))
+                    parts.append(f"[{i+1}:a]aformat=channel_layouts=stereo,"
+                                 f"adelay={delay}|{delay},volume=0.8[s{i}]")
+                if parts:
+                    mix_in = "[0:a]" + "".join(f"[s{i}]" for i in range(len(parts)))
+                    parts.append(f"{mix_in}amix=inputs={len(parts)+1}:duration=first:"
+                                 f"normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11[out]")
+                    cmd += ["-filter_complex", ";".join(parts), "-map", "[out]",
+                            "-ar", "48000", "-ac", "2", a.out + ".sfx.wav"]
+                    subprocess.run(cmd, check=True, capture_output=True, text=True)
+                    os.replace(a.out + ".sfx.wav", a.out)
+                    sfx_mixed = len(parts)
+        except Exception as e:
+            print(f"[mix] sfx pass skipped: {type(e).__name__}: {e}", flush=True)
+
     jdump({"mode": mode, "music": a.music, "target": "I=-16 TP=-1.5 LRA=11",
            "denoise": a.denoise, "duck_depth_db": depth, "duck_windows": n_win,
-           "out": a.out}, f"{a.reports}/audio_mix_report.json")
+           "sfx_mixed": sfx_mixed, "out": a.out}, f"{a.reports}/audio_mix_report.json")
     record_stage(a.reports, "07-audio-mix", "success", t0=t0,
                  bottleneck="none (single-pass ffmpeg)",
-                 optimization_applied="sidechaincompress diagnostics pass",
-                 optimization_result=f"duck_depth={depth}dB over {n_win} windows")
-    print(f"mixed ok mode={mode} duck_depth={depth}dB windows={n_win}")
+                 optimization_applied="sidechaincompress diagnostics + synth SFX bed",
+                 optimization_result=f"duck_depth={depth}dB over {n_win} windows, sfx={sfx_mixed}")
+    print(f"mixed ok mode={mode} duck_depth={depth}dB windows={n_win} sfx={sfx_mixed}")
 
 
 if __name__ == "__main__":

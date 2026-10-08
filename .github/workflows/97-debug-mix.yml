@@ -66,3 +66,27 @@ jobs:
           for T in 0.3 2.0 3.5 4.5 5.5; do
             ffmpeg -hide_banner -ss $T -i master5.mp4 -frames:v 1 -vf signalstats,metadata=print:key=lavfi.signalstats.YAVG -f null - 2>&1 | grep -a YAVG | head -1 | sed "s/^/t=$T /"
           done
+
+      - name: "Sintel segment repro (real path: 1080x1920 cover_crop, jobs=4)"
+        run: |
+          cd /tmp/mx
+          GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" gh release download source-v1 -p "sintel.mp4" --repo "$GITHUB_REPOSITORY" --clobber || true
+          ffprobe -v error -show_entries format=duration -of csv=p=0 sintel.mp4
+          python3 - <<'PY'
+          import json
+          meta = {"src_w": 1920, "src_h": 1080, "out_w": 1080, "out_h": 1920,
+                  "out_fps": 30, "vertical": "cover_crop", "has_audio": True}
+          segs = []
+          for i, ss in enumerate((20.5, 30.0, 40.5)):
+              segs.append({"i": i, "src_start": ss, "src_dur": 0.66, "out_dur": 0.66,
+                           "speed": 1.0, "zoom": 1.0})
+          json.dump({"meta": meta, "segments": segs}, open("tls.json", "w"))
+          PY
+          python3 $GITHUB_WORKSPACE/scripts/montage/render_segments.py --source sintel.mp4 \
+            --timeline tls.json --outdir segs --jobs 4 --crf 19 --preset medium
+          for i in 0 1 2; do
+            ffmpeg -hide_banner -i segs/seg_00$i.mp4 -frames:v 1 \
+              -vf signalstats,metadata=print:key=lavfi.signalstats.YAVG -f null - 2>&1 \
+              | grep -a YAVG | head -1 | sed "s/^/sintel_seg$i /"
+            ffprobe -v error -show_entries format=duration -of csv=p=0 segs/seg_00$i.mp4
+          done

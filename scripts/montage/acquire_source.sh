@@ -35,9 +35,9 @@ PY
 
 # ---- 1. yt-dlp multi-client -------------------------------------------------
 if command -v yt-dlp >/dev/null 2>&1; then
-  for client in tv android ios mweb web_embedded tv_embedded default; do
+  for client in tv android_vr tv_simply android ios mweb web_embedded default; do
     log "yt-dlp attempt client=$client"
-    if timeout 300 yt-dlp --no-warnings --force-ipv4 --socket-timeout 20 --no-playlist \
+    if timeout 240 yt-dlp --no-warnings --force-ipv4 --socket-timeout 20 --no-playlist \
         --extractor-args "youtube:player_client=$client" \
         -f "bv*[height<=1080][vcodec^=avc1]+ba[acodec^=mp4a]/b[height<=1080][acodec^=mp4a]/bv*+ba/b" \
         --merge-output-format mp4 --ffmpeg-location "$(command -v ffmpeg)" \
@@ -46,19 +46,31 @@ if command -v yt-dlp >/dev/null 2>&1; then
       if validate "$DEST"; then log "OK via yt-dlp/$client"; exit 0; fi
     fi
   done
-  log "yt-dlp exhausted all clients"
+  log "yt-dlp exhausted all clients (errors below)"
+  tail -8 yt_dlp_errors.log 2>/dev/null || true
 else
   log "yt-dlp not installed"
+fi
+
+# ---- 1b. Invidious instance hunt (runner has clean DNS/IP; media proxied) ----
+log "instance hunt (invidious registry + fallback list)"
+if VID=$(python3 -c "import re,sys;m=re.search(r'(?:v=|youtu\.be/|embed/|shorts/)([A-Za-z0-9_-]{11})','${URL}');print(m.group(1) if m else '')" 2>/dev/null) && [ -n "$VID" ]; then
+  if timeout 300 python3 scripts/cineforge/instance_hunt.py "$VID" "$DEST" --timeout 240 2>&1 | tail -20; then
+    if validate "$DEST"; then log "OK via invidious instance hunt"; exit 0; fi
+  fi
+  log "instance hunt failed"
+else
+  log "not a youtube id, skipping instance hunt"
 fi
 
 # ---- 2a. resume a pre-existing loader.to job (created off-runner) -----------
 if [ -n "${LOADER_JOB_ID:-}" ]; then
   log "polling pre-existing loader job $LOADER_JOB_ID"
-  URL_DL=$(timeout 700 python3 - "$LOADER_JOB_ID" <<'PY'
+  URL_DL=$(timeout 140 python3 - "$LOADER_JOB_ID" <<'PY'
 import json, sys, time, urllib.request
 jid = sys.argv[1]
 UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/132.0"}
-for i in range(160):
+for i in range(30):
     time.sleep(4)
     try:
         req = urllib.request.Request(
@@ -84,7 +96,7 @@ fi
 
 # ---- 2. loader.to tunnel ----------------------------------------------------
 log "trying loader.to tunnel (this can take several minutes)"
-if URL_DL=$(timeout 900 python3 "$(dirname "$0")/loader_tunnel.py" "$URL" 1080 2>>loader_tunnel.log); then
+if URL_DL=$(timeout 150 python3 "$(dirname "$0")/loader_tunnel.py" "$URL" 1080 2>>loader_tunnel.log); then
   log "tunnel ready, downloading"
   curl -sL --retry 3 --max-time 900 -o "$DEST.part" "$URL_DL" && \
   mv "$DEST.part" "$DEST" && validate "$DEST" && { log "OK via loader.to tunnel"; exit 0; }

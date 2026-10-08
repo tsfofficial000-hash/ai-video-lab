@@ -67,8 +67,9 @@ jobs:
                      "path": "source.mp4"}, open("reports/source_metadata.json", "w"))
           print("source:", d["format"]["duration"], "s")
           PY
-          ffmpeg -v error -y -i source.mp4 -vf scale=480:-2 -c:v libx264 -preset veryfast \
+          ffmpeg -v error -y -i source.mp4 -vf "scale=480:270,setsar=1" -c:v libx264 -preset veryfast \
             -crf 28 -an media/proxy.mp4
+          [ -s media/proxy.mp4 ] || { echo "proxy empty"; exit 1; }
           ffmpeg -v error -y -i source.mp4 -vn -ac 1 -ar 22050 media/audio.wav
 
       - name: "Stages 03-06: audio + beats (+ transcript skipped for draft speed)"
@@ -78,6 +79,7 @@ jobs:
           cd scripts/cineforge
           python3 audio_analysis.py --audio ../../media/audio.wav --reports ../../reports || true
           python3 beat_detect.py --audio ../../media/audio.wav --reports ../../reports --src-duration "${SRC_DUR}"
+          python3 transcribe.py --audio ../../media/audio.wav --reports ../../reports || echo "transcribe skipped"
           cd ../..
 
       - name: "Stage 06: edit decision"
@@ -108,9 +110,11 @@ jobs:
         run: |
           set -e
           cd scripts/cineforge && python3 render_ffmpeg.py --source ../../source.mp4 \
+            --timeline ../../out/timeline.json --plan ../../reports/edit_plan.json --dryrun
+          python3 render_ffmpeg.py --source ../../source.mp4 \
             --timeline ../../out/timeline.json --plan ../../reports/edit_plan.json \
             --mixed ../../media/mixed_audio.wav --out ../../out/master.mp4 \
-            --dryrun ${{ inputs.draft == 'true' && '--draft' || '' }}
+            ${{ inputs.draft == 'true' && '--draft' || '' }}
           cd ../..
 
       - name: "Stage 09: captions + hook burn"

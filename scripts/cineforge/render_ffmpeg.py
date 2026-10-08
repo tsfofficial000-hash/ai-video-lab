@@ -38,6 +38,7 @@ def main():
 
     # ---- dry-run gate: 3-5s sanity render of segment 0 at draft settings ----
     if a.dryrun:
+        os.makedirs("out", exist_ok=True)
         mini = {"meta": dict(tl["meta"]), "segments": segs[:2]}
         for s in mini["segments"]:
             s["out_dur"] = min(s["out_dur"], 1.5)

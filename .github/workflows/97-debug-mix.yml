@@ -42,3 +42,25 @@ jobs:
               -map "[out]" -ar 48000 -ac 2 e.wav && echo "E PASS" || echo "E FAIL"
             ffprobe -v error -show_entries stream=codec_type -of csv=p=0 src.mp4
           fi
+
+      - name: "Xfade chain probe (39-input hypothesis)"
+        run: |
+          cd /tmp/mx
+          # render 5 segments from the sine/testsrc source with the cover_crop graph
+          ffmpeg -v error -y -f lavfi -i "testsrc2=s=640x360:d=10:r=30" -f lavfi -i "sine=frequency=440:duration=10" -c:v libx264 -preset ultrafast -c:a aac -shortest src5.mp4
+          for i in 0 1 2 3 4; do
+            SS=$(python3 -c "print(1.0 + $i*1.5)")
+            ffmpeg -v error -y -ss $SS -t 1.0 -i src5.mp4 -filter_complex "[0:v]null,fps=60,setpts=PTS/1.0,fps=30,scale=1138:640,crop=360:640:389:0,setsar=1,scale=360:640,format=yuv420p,trim=duration=1.0,setpts=PTS-STARTPTS[v];[0:a]atempo=1.0,atrim=duration=1.0,asetpts=PTS-STARTPTS[a]" -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -crf 20 -c:a aac -r 30 -vsync cfr seg_$i.mp4
+          done
+          python3 - <<'PY'
+          import json
+          segs = [{"i": i, "out_dur": 1.0, "transition_after": {"type": "fade", "dur": 0.05}} for i in range(5)]
+          json.dump({"meta": {"out_w": 360, "out_h": 640, "out_fps": 30,
+                              "title_main": "T", "title_sub": "S"},
+                     "segments": segs}, open("tl5.json", "w"))
+          PY
+          python3 $GITHUB_WORKSPACE/scripts/montage/assemble.py --timeline tl5.json --segdir . --out master5.mp4
+          echo "--- luminance of master5 at 5 points ---"
+          for T in 0.3 2.0 3.5 4.5 5.5; do
+            ffmpeg -hide_banner -ss $T -i master5.mp4 -frames:v 1 -vf signalstats,metadata=print:key=lavfi.signalstats.YAVG -f null - 2>&1 | grep -a YAVG | head -1 | sed "s/^/t=$T /"
+          done

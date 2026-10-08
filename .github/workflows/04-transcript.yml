@@ -19,7 +19,7 @@ jobs:
       - name: Transcribe (int8, VAD, base fallback)
         run: |
           set -e
-          cd scripts/cineforge && python3 transcribe.py --audio ../../source.mp4 \
+          cd scripts/cineforge && python3 transcribe.py --audio ../../media/audio.wav \
             --reports ../../reports --model "${{ inputs.model || 'small' }}"
           cd ../.. && wc -l reports/subtitles.srt && head -6 reports/transcript.txt
       - uses: actions/upload-artifact@v4

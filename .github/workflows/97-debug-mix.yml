@@ -90,3 +90,34 @@ jobs:
               | grep -a YAVG | head -1 | sed "s/^/sintel_seg$i /"
             ffprobe -v error -show_entries format=duration -of csv=p=0 segs/seg_00$i.mp4
           done
+
+      - name: "Real 17-seg timeline repro (video-stream duration audit)"
+        run: |
+          cd /tmp/mx
+          GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" gh release download source-v1 -p "source.mp4" --repo "$GITHUB_REPOSITORY" --clobber || true
+          cat > tl_real.json <<'JSON'
+          {"meta": {"src_w": 1920, "src_h": 1080, "out_w": 1080, "out_h": 1920, "out_fps": 30, "vertical": "cover_crop", "has_audio": true, "title_main": "T", "title_sub": "S"},
+           "segments": []}
+          JSON
+          python3 - <<'PY'
+          import json
+          tl = json.load(open("tl_real.json"))
+          ss = [9.404, 18.646, 19.574, 20.503, 21.316, 22.152, 22.988, 23.847, 24.729,
+                25.565, 26.424, 27.353, 28.235, 29.071, 30.0, 30.883, 31.718]
+          for i, start in enumerate(ss):
+              tl["segments"].append({"i": i, "src_start": start, "src_dur": 0.66,
+                                     "out_dur": 0.66, "speed": 1.0, "zoom": 1.0,
+                                     "transition_after": {"type": "fade", "dur": 0.05}})
+          json.dump(tl, open("tl_real.json", "w"))
+          PY
+          python3 $GITHUB_WORKSPACE/scripts/montage/render_segments.py --source source.mp4 \
+            --timeline tl_real.json --outdir segs17 --jobs 4 --crf 19 --preset medium
+          echo "--- per-segment VIDEO stream durations ---"
+          for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
+            VD=$(ffprobe -v error -select_streams v:0 -count_packets -show_entries stream=nb_read_packets -of csv=p=0 segs17/seg_0$i.mp4)
+            AD=$(ffprobe -v error -select_streams a:0 -show_entries stream=duration -of csv=p=0 segs17/seg_0$i.mp4)
+            echo "seg$i video_packets=$VD audio_dur=$AD"
+          done
+          python3 $GITHUB_WORKSPACE/scripts/montage/assemble.py --timeline tl_real.json --segdir segs17 --out master17.mp4
+          ffprobe -v error -select_streams v:0 -count_packets -show_entries stream=nb_read_packets -of csv=p=0 master17.mp4 | sed 's/^/master17 video_packets=/'
+          ffprobe -v error -show_entries format=duration -of csv=p=0 master17.mp4 | sed 's/^/master17 container=/'

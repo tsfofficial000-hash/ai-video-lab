@@ -41,7 +41,7 @@ def disk_free_gb(path="."):
 
 
 def record_stage(reports_dir, stage_name, status, extra=None, t0=None, retries=0,
-                 bottleneck="", optimization="", optimization_result=""):
+                 bottleneck="", optimization_applied="", optimization_result=""):
     """Append/update reports/latency.json with one stage record."""
     path = os.path.join(reports_dir, "latency.json")
     data = {"stages": []}

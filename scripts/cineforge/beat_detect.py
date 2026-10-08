@@ -23,6 +23,7 @@ def main():
     y, sr = librosa.load(a.audio, sr=22050, mono=True)
     dur = a.src_duration or len(y) / sr
     tempo, beats = librosa.beat.beat_track(y=y, sr=sr, units="time")
+    tempo = float(np.ravel(tempo)[0]) if np.ndim(tempo) else float(tempo)
     onsets = librosa.onset.onset_detect(y=y, sr=sr, units="time", backtrack=False)
     onset_env = librosa.onset.onset_strength(y=y, sr=sr)
     rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]

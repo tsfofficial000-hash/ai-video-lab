@@ -26,14 +26,21 @@ runs:
           sleep 5
         done
         [ "$ok" = "1" ] || { echo "pip install failed after 3 attempts"; exit 1; }
-        for i in 1 2; do
-          if timeout 150 sudo apt-get update -qq && \
-             timeout 200 sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libgl1 libglib2.0-0; then
-            break
-          fi
-          echo "apt attempt $i failed - retrying"
-          sleep 5
-        done
+        # ffmpeg ships preinstalled on ubuntu-latest runners (6.1.1) - apt only as fallback
+        if command -v ffmpeg >/dev/null 2>&1; then
+          echo "ffmpeg preinstalled: $(ffmpeg -version | head -1)"
+        else
+          for i in 1 2; do
+            if timeout 300 sudo apt-get update -qq && \
+               timeout 300 sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libgl1 libglib2.0-0; then
+              break
+            fi
+            echo "apt attempt $i failed - retrying"
+            sleep 5
+          done
+        fi
+        # best-effort extras (mediapipe/opencv support); never fatal
+        timeout 120 sudo apt-get install -y -qq libgl1 libglib2.0-0 fonts-dejavu-core || true
         ffmpeg -version | head -1
     - name: OFL fonts (cached, never fails the run)
       shell: bash

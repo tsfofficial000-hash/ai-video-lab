@@ -70,8 +70,8 @@ jobs:
       - name: "Sintel segment repro (real path: 1080x1920 cover_crop, jobs=4)"
         run: |
           cd /tmp/mx
-          GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" gh release download source-v1 -p "sintel.mp4" --repo "$GITHUB_REPOSITORY" --clobber || true
-          ffprobe -v error -show_entries format=duration -of csv=p=0 sintel.mp4
+          GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" gh release download source-v1 -p "source.mp4" --repo "$GITHUB_REPOSITORY" --clobber || true
+          ffprobe -v error -show_entries format=duration -of csv=p=0 source.mp4
           python3 - <<'PY'
           import json
           meta = {"src_w": 1920, "src_h": 1080, "out_w": 1080, "out_h": 1920,
@@ -82,7 +82,7 @@ jobs:
                            "speed": 1.0, "zoom": 1.0})
           json.dump({"meta": meta, "segments": segs}, open("tls.json", "w"))
           PY
-          python3 $GITHUB_WORKSPACE/scripts/montage/render_segments.py --source sintel.mp4 \
+          python3 $GITHUB_WORKSPACE/scripts/montage/render_segments.py --source source.mp4 \
             --timeline tls.json --outdir segs --jobs 4 --crf 19 --preset medium
           for i in 0 1 2; do
             ffmpeg -hide_banner -i segs/seg_00$i.mp4 -frames:v 1 \

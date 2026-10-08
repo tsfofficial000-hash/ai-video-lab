@@ -29,9 +29,11 @@ json.dump(meta, open(f"{wd}/reports/source_metadata.json", "w"), indent=1)
 print(json.dumps(meta))
 PY
 
-# fast proxy for analysis (keep aspect, cap height 480)
-ffmpeg -v error -y -i "$SRC" -vf "scale=-2:'min(480,ih)':force_original_aspect_ratio=decrease" \
-  -c:v libx264 -preset veryfast -crf 26 -an "$WD/media/proxy.mp4" || true
+# fast proxy for analysis (square pixels - SAR-aware scaling produced odd widths
+# like 853x480 that libx264 rejects, leaving a 0-byte proxy: the luma gate died)
+ffmpeg -v error -y -i "$SRC" -vf "scale=480:270:force_original_aspect_ratio=decrease,setsar=1" \
+  -c:v libx264 -preset veryfast -crf 26 -an "$WD/media/proxy.mp4"
+[ -s "$WD/media/proxy.mp4" ] || { echo "FATAL: proxy.mp4 empty - luma gate would be dead"; exit 1; }
 # audio wav for analysis
 ffmpeg -v error -y -i "$SRC" -vn -ac 1 -ar 22050 "$WD/media/audio.wav"
 # contact sheet: 4x4 thumbnails

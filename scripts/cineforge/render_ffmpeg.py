@@ -89,6 +89,7 @@ def main():
             "-movflags", "+faststart", "out/_lb.mp4"])
         cur = "out/_lb.mp4"
 
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     os.replace(cur, a.out)
     probe = json.loads(subprocess.check_output(
         ["ffprobe", "-v", "error", "-print_format", "json", "-show_format", a.out]).decode())

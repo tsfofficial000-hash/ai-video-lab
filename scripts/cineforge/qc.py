@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 
-from utils import jdump, ffprobe_json, record_stage
+from utils import jdump, jload, ffprobe_json, record_stage
 import time
 
 

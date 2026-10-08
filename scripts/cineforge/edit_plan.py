@@ -41,6 +41,8 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     if luma is None:
         cache = luma_cache or "reports/luma.json"
         luma = luma_profile_ffmpeg(src_path, fps=2, cache=cache) if src_path else []
+    print(f"[plan] luma profile: {len(luma)} samples from {src_path!r} "
+          f"(gate {'ACTIVE' if luma else 'INACTIVE - no gating this run'})", flush=True)
     beats_list = beats.get("beats") or []
     if len(beats_list) < 8:   # beatless/near-beatless source -> uniform grid fallback
         beat_period = 1.35
@@ -175,7 +177,8 @@ def main():
     target = min(target, max(10, dur - 2))
 
     source_meta = dict(meta, path=os.environ.get("CF_SOURCE_PATH") or meta.get("path"))
-    segments, audit = build_timeline(source_meta, beats, style_cfg, a.style, target)
+    segments, audit = build_timeline(source_meta, beats, style_cfg, a.style, target,
+                                     luma_cache=os.path.join(a.reports, "luma.json"))
     total = sum(s["out_dur"] for s in segments) - sum(
         s["transition_after"]["dur"] for s in segments[:-1])
     cps = round(len(segments) / total, 2) if total else 0.0

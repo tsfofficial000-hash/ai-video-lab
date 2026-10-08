@@ -23,6 +23,9 @@ def luma_profile_ffmpeg(src, fps=2, cache=None):
     p = subprocess.run(["ffmpeg", "-hide_banner", "-i", src, "-vf",
                         f"fps={fps},signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-",
                         "-f", "null", "-"], capture_output=True, text=True)
+    if p.returncode != 0 or not p.stdout:
+        print(f"[luma] PROFILE FAILED rc={p.returncode} src={src!r} "
+              f"stderr_tail={(p.stderr or '')[-200:]!r}", flush=True)
     times, ys = [], []
     for ln in (p.stdout or "").splitlines():
         mt, my = "pts_time:" in ln, "YAVG=" in ln

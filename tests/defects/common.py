@@ -42,7 +42,7 @@ def synth_video(path, dur=4.0, w=540, h=960, bright=True, drawtext=None):
 def synth_black_windows(path, dur=8.0, w=320, h=240):
     """Bright video with black segments at 0-1.5s and 6.0-8.0s (for blackdetect)."""
     c1 = f"color=c=black:s={w}x{h}:d=1.5"
-    c2 = f"gradients=s={w}x{h}:d={dur - 1.5 - 2.0}:s=2"
+    c2 = f"gradients=s={w}x{h}:d={dur - 1.5 - 2.0}:c0=0x404060:c1=0xF0F0FF"
     c3 = f"color=c=black:s={w}x{h}:d=2.0"
     fc = "[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv420p[v]"
     cmd = ["ffmpeg", "-v", "error", "-y",

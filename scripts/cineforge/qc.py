@@ -12,6 +12,29 @@ from utils import jdump, jload, ffprobe_json, record_stage
 import time
 
 
+def parse_blackdetect(stderr):
+    """Parse ffmpeg blackdetect lines. ffmpeg prints `black_start:0` (no space),
+    so the separator must allow optional whitespace (defect D1)."""
+    return [(float(a), float(b)) for a, b in re.findall(
+        r"black_start:\s*([\d.]+)\s+black_end:\s*([\d.]+)", stderr)]
+
+
+def luma_profile(path, fps=2):
+    """2fps YAVG sample -> [{t, y}] (gate G2 + G1 first-second rule)."""
+    p = subprocess.run(["ffmpeg", "-hide_banner", "-i", path, "-vf",
+                        f"fps={fps},signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-",
+                        "-f", "null", "-"], capture_output=True, text=True)
+    times, ys = [], []
+    for ln in (p.stdout or "").splitlines():
+        mt = re.search(r"pts_time:([\d.]+)", ln)
+        my = re.search(r"YAVG=([\d.]+)", ln)
+        if mt:
+            times.append(float(mt.group(1)))
+        if my:
+            ys.append(float(my.group(1)))
+    return [{"t": t, "y": y} for t, y in zip(times, ys)]
+
+
 def check(path, plan, reports):
     p = ffprobe_json(path)
     v = next((s for s in p["streams"] if s["codec_type"] == "video"), None)
@@ -46,12 +69,47 @@ def check(path, plan, reports):
     else:
         ok("loudness_reasonable", False, "loudnorm scan failed")
 
-    # black frames (first 10s sample)
-    bf = subprocess.run(["ffmpeg", "-hide_banner", "-i", path, "-t", "10", "-vf",
-                         "blackdetect=d=0.5:pix_th=0.10", "-f", "null", "-"],
+    # G1: whole-file blackdetect gate (D1: regex fixed, full scan - no head-only truncation)
+    bf = subprocess.run(["ffmpeg", "-hide_banner", "-i", path, "-vf",
+                         "blackdetect=d=0.4:pix_th=0.12:pic_th=0.90", "-f", "null", "-"],
                         capture_output=True, text=True).stderr
-    blacks = re.findall(r"black_start: ([\d.]+)", bf)
-    ok("no_black_opening", not blacks, f"{len(blacks)} black regions in first 10s")
+    blacks = parse_blackdetect(bf)
+    total_black = sum(e - s for s, e in blacks)
+    longest = max((e - s for s, e in blacks), default=0.0)
+    tail_ok = True
+    if blacks:
+        ls, le = blacks[-1]
+        if le >= dur - 0.25 and le - ls <= 0.5:
+            longest_eff = max((e - s for s, e in blacks[:-1]), default=0.0)
+            tail_ok = True
+        else:
+            longest_eff = longest
+    else:
+        longest_eff = 0.0
+    g1 = (total_black <= 0.02 * dur + 0.05) and longest_eff <= 0.6 and tail_ok
+    ok("black_budget_g1", g1,
+       f"{len(blacks)} regions, total {total_black:.2f}s ({100 * total_black / max(dur, 0.1):.1f}%), "
+       f"longest {longest:.2f}s (final fadeblack exempt <=0.5s)")
+
+    # G2: luma profile (near-black ratio, median band, blown highlights)
+    prof = luma_profile(path, fps=2)
+    if prof:
+        ys = [s["y"] for s in prof]
+        ys_sorted = sorted(ys)
+        med = ys_sorted[len(ys_sorted) // 2]
+        nb = sum(1 for y in ys if y < 16) / len(ys)
+        blown = 0
+        for y in ys:
+            blown = blown + 1 if y > 250 else 0
+            if blown > 1:  # >2 consecutive samples at 2fps
+                break
+        first1 = [s["y"] for s in prof if s["t"] <= 1.0]
+        first1_mean = sum(first1) / len(first1) if first1 else 0.0
+        g2 = nb <= 0.05 and 45 <= med <= 140 and blown <= 1 and first1_mean >= 25
+        ok("luma_profile_g2", g2,
+           f"median={med:.0f} near-black={100 * nb:.1f}% blown={blown} first1sY={first1_mean:.0f}")
+    else:
+        ok("luma_profile_g2", False, "luma scan failed")
 
     # silent final
     if a:

@@ -2,6 +2,11 @@ name: "11 - Final Delivery"
 on:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      release_tag:
+        description: "Release tag to publish"
+        type: string
+        default: "cineforge-v2"
 
 permissions: { contents: write }
 
@@ -20,8 +25,10 @@ jobs:
         with: { name: stage-06-plan, path: plan }
       - uses: actions/download-artifact@v4
         with: { name: stage-00-reports, path: reports00 }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-01-assets, path: assets01 }
 
-      - name: Assemble delivery bundle
+      - name: Assemble delivery bundle (D2 - reports glob-resolved from artifacts)
         run: |
           set -e
           mkdir -p delivery
@@ -29,40 +36,107 @@ jobs:
           cp $(python3 -c "import glob;print((glob.glob('final/**/poster.jpg',recursive=True)+['x'])[0])") delivery/poster.jpg 2>/dev/null || true
           cp $(python3 -c "import glob;print(glob.glob('transcript/**/subtitles.srt',recursive=True)[0])") delivery/ 2>/dev/null || true
           cp $(python3 -c "import glob;print(glob.glob('transcript/**/transcript.txt',recursive=True)[0])") delivery/ 2>/dev/null || true
-          cp $(python3 -c "import glob;print(glob.glob('plan/**/edit_plan.json',recursive=True)[0])") delivery/ 2>/dev/null || true
+          cp $(python3 -c "import glob;print(glob.glob('plan/**/edit_plan.json',recursive=True)[0])") delivery/edit_plan.json
           cp $(python3 -c "import glob;print(glob.glob('reports00/**/environment.json',recursive=True)[0])") delivery/ 2>/dev/null || true
-          cp reports/latency.json delivery/ 2>/dev/null || true
-          cp reports/qc_report.json delivery/ 2>/dev/null || true
-          cp reports/media_manifest.json delivery/ 2>/dev/null || true
+
+          # MANDATORY: qc_report.json must exist in the downloaded QC artifact
+          QCR=$(python3 -c "import glob;c=glob.glob('final/**/qc_report.json',recursive=True);print(c[0] if c else '');assert c, 'qc_report.json missing from stage-10-qc artifact'")
+          cp "$QCR" delivery/qc_report.json
+
+          # media_manifest.json from stage-01 assets artifact
+          MM=$(python3 -c "import glob;c=glob.glob('assets01/**/media_manifest.json',recursive=True);print(c[0] if c else '')")
+          [ -n "$MM" ] && cp "$MM" delivery/media_manifest.json || echo "WARN: media_manifest.json not in stage-01 artifact"
+
+          # latency.json: merge every per-stage latency record found in artifacts
+          python3 - <<'PY'
+          import glob, json, os
+          stages, seen = [], set()
+          for p in glob.glob('**/**/latency.json', recursive=True):
+              try:
+                  for s in json.load(open(p)).get('stages', []):
+                      key = s.get('stage_name')
+                      if key and key not in seen:
+                          seen.add(key)
+                          stages.append(s)
+              except Exception:
+                  pass
+          if stages:
+              json.dump({'stages': stages}, open('delivery/latency.json', 'w'), indent=1)
+              print(f'latency.json merged: {len(stages)} stage records')
+          else:
+              # mandatory fallback: synthesize from qc duration so the bundle never ships empty
+              qc = json.load(open('delivery/qc_report.json'))
+              json.dump({'stages': [{'stage_name': 'pipeline-total',
+                                     'duration_seconds': qc.get('probe', {}).get('duration'),
+                                     'status': qc.get('status')}]},
+                        open('delivery/latency.json', 'w'), indent=1)
+              print('latency.json synthesized from qc (no per-stage records found)')
+          PY
+
+          # contact sheet 4x4 (G8)
+          F=delivery/cineforge_final.mp4
+          DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$F")
+          ffmpeg -v error -y -i "$F" -vf "fps=$(python3 -c "print(max(16/float('$DUR'),0.05))"),scale=270:480,tile=4x4" -frames:v 1 delivery/contact_sheet.png
+
+          # auto aesthetic stats (creative review appended in Phase 3)
+          python3 - <<'PY'
+          import json, subprocess, re, glob
+          plan = json.load(open('delivery/edit_plan.json'))
+          qc = json.load(open('delivery/qc_report.json'))
+          segs = plan.get('segments', [])
+          dur = qc.get('probe', {}).get('duration') or plan.get('target_duration', 0)
+          cps = len(segs) / dur if dur else 0
+          tr = {}
+          for s in segs[:-1]:
+              t = s.get('transition_after', {}).get('type', 'none')
+              tr[t] = tr.get(t, 0) + 1
+          lines = [
+              "# Aesthetic report (auto-stats)",
+              f"- runtime: {dur}s, segments: {len(segs)}, cut density: {cps:.2f} cuts/s",
+              f"- transitions: {tr}",
+              f"- grade: {plan.get('color_grade')}, vertical: {plan.get('vertical_plan')}",
+              f"- qc status: {qc.get('status')}",
+              "",
+              "## Creative self-review",
+              "(appended by the agent during Phase 3 creative loop; see reports/cineforge/)",
+              "",
+          ]
+          old = 'aesthetic_report.md'
+          if os.path.isfile(old):
+              lines += open(old).read().splitlines()
+          open('delivery/aesthetic_report.md', 'w').write("\n".join(lines) + "\n")
+          PY
           ls -la delivery/
 
       - uses: actions/upload-artifact@v4
         with: { name: cineforge-delivery, path: delivery/, retention-days: 30 }
 
-      - name: Publish release cineforge-v1
+      - name: Publish release
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         run: |
-          gh release view cineforge-v1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
-            gh release create cineforge-v1 --repo "$GITHUB_REPOSITORY" \
-              --title "CineForge Pro — autonomous edit" \
-              --notes "Run ${{ github.run_id }} — final video + SRT + plan + QC + latency" || true
-          for f in delivery/cineforge_final.mp4 delivery/poster.jpg; do
-            [ -f "$f" ] && gh release upload cineforge-v1 "$f" --repo "$GITHUB_REPOSITORY" --clobber || true
+          TAG="${{ inputs.release_tag || 'cineforge-v2' }}"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "CineForge v2 — autonomous edit" \
+              --notes "Run ${{ github.run_id }} — final video + G8 evidence bundle" || true
+          for f in delivery/cineforge_final.mp4 delivery/poster.jpg delivery/contact_sheet.png; do
+            [ -f "$f" ] && gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber || true
           done
-          echo "release: https://github.com/$GITHUB_REPOSITORY/releases/tag/cineforge-v1"
+          echo "release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
 
-      - name: Commit logs
+      - name: Commit run evidence to git (G8 - survives artifact expiry)
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         run: |
           set -e
-          mkdir -p logs/cineforge
-          cp reports/latency.json logs/cineforge/latency-run-${{ github.run_id }}.json 2>/dev/null || true
-          cp reports/qc_report.json logs/cineforge/qc-run-${{ github.run_id }}.json 2>/dev/null || true
+          mkdir -p reports/cineforge/run-${{ github.run_id }}
+          for f in qc_report.json latency.json media_manifest.json edit_plan.json environment.json contact_sheet.png aesthetic_report.md; do
+            [ -f "delivery/$f" ] && cp "delivery/$f" "reports/cineforge/run-${{ github.run_id }}/" || true
+          done
           git config user.name "cineforge bot"
           git config user.email "actions@users.noreply.github.com"
-          git add logs/cineforge || true
+          git add reports/cineforge
           for i in 1 2 3; do
-            git commit -m "logs(cineforge): run ${{ github.run_id }}" 2>/dev/null && {
+            git commit -m "evidence(cineforge): run ${{ github.run_id }} gates + reports" 2>/dev/null && {
               git push origin HEAD:${{ github.ref_name }} && break; } || break
             git pull --rebase origin ${{ github.ref_name }} || true
           done

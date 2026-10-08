@@ -31,7 +31,7 @@ def main():
         sys.exit(1)
     jid = j["id"]
     print(f"job={jid}", file=sys.stderr)
-    for i in range(90):
+    for i in range(210):
         time.sleep(4)
         try:
             p = json.loads(http(f"https://p.oceansaver.in/ajax/progress.php?id={jid}").decode())

@@ -11,6 +11,10 @@ on:
         description: "Title overlay (derived from video if empty)"
         required: false
         default: ""
+      loader_job_id:
+        description: "Pre-existing loader.to job id to resume (optional)"
+        required: false
+        default: ""
   push:
     paths:
       - ".github/workflows/montage.yml"
@@ -45,6 +49,7 @@ jobs:
       - name: Acquire source video (yt-dlp → tunnel → release fallback)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LOADER_JOB_ID: ${{ github.event.inputs.loader_job_id || 'v2_stream_acdf6eef7def101830ab' }}
         run: |
           set -e
           chmod +x scripts/montage/acquire_source.sh

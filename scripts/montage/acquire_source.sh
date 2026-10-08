@@ -51,14 +51,46 @@ else
   log "yt-dlp not installed"
 fi
 
+# ---- 2a. resume a pre-existing loader.to job (created off-runner) -----------
+if [ -n "${LOADER_JOB_ID:-}" ]; then
+  log "polling pre-existing loader job $LOADER_JOB_ID"
+  URL_DL=$(timeout 700 python3 - "$LOADER_JOB_ID" <<'PY'
+import json, sys, time, urllib.request
+jid = sys.argv[1]
+UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/132.0"}
+for i in range(160):
+    time.sleep(4)
+    try:
+        req = urllib.request.Request(
+            f"https://p.oceansaver.in/ajax/progress.php?id={jid}", headers=UA)
+        p = json.loads(urllib.request.urlopen(req, timeout=15).read().decode())
+    except Exception as e:
+        print(f"pollerr {type(e).__name__}: {str(e)[:80]}", file=sys.stderr)
+        continue
+    if p.get("download_url"):
+        print(p["download_url"])
+        sys.exit(0)
+    if i % 5 == 0:
+        print(f"prog={p.get('progress')} text={p.get('text','')}", file=sys.stderr)
+sys.exit(1)
+PY
+)
+  if [ -n "${URL_DL:-}" ] && curl -sL --retry 3 --max-time 900 -o "$DEST.part" "$URL_DL" && \
+     mv "$DEST.part" "$DEST" && validate "$DEST"; then
+    log "OK via pre-existing loader job"; exit 0
+  fi
+  log "pre-existing loader job path failed"
+fi
+
 # ---- 2. loader.to tunnel ----------------------------------------------------
 log "trying loader.to tunnel (this can take several minutes)"
-if URL_DL=$(timeout 600 python3 "$(dirname "$0")/loader_tunnel.py" "$URL" 1080 2>>loader_tunnel.log); then
+if URL_DL=$(timeout 900 python3 "$(dirname "$0")/loader_tunnel.py" "$URL" 1080 2>>loader_tunnel.log); then
   log "tunnel ready, downloading"
   curl -sL --retry 3 --max-time 900 -o "$DEST.part" "$URL_DL" && \
   mv "$DEST.part" "$DEST" && validate "$DEST" && { log "OK via loader.to tunnel"; exit 0; }
 else
-  log "loader.to tunnel failed (see loader_tunnel.log)"
+  log "loader.to tunnel failed (see loader_tunnel.log tail below)"
+  tail -6 loader_tunnel.log 2>/dev/null || true
 fi
 
 # ---- 3. release asset fallback ----------------------------------------------

@@ -22,6 +22,10 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "cineforge"))
+from selection import Selector, luma_profile_ffmpeg  # noqa: E402
+
 OUT_W, OUT_H, OUT_FPS = 1080, 1920, 30
 
 
@@ -85,7 +89,9 @@ def build(src, out_json, title_main, title_sub, preview=False, target_len=None):
 
     wav = "/tmp/_montage_analysis.wav"
     extract_wav(src, wav)
-    tempo, beats, onsets, rms, times = audio_features(wav)
+    tempo_raw, beats, onsets, rms, times = audio_features(wav)
+    import numpy as _np
+    tempo = float(_np.atleast_1d(tempo_raw)[0])
     print(f"[timeline] tempo={tempo:.1f}bpm beats={len(beats)} onsets={len(onsets)}", flush=True)
     cuts = scene_starts(src)
     print(f"[timeline] scene cuts={len(cuts)}", flush=True)
@@ -95,7 +101,7 @@ def build(src, out_json, title_main, title_sub, preview=False, target_len=None):
         target_len = max(24.0, min(72.0, 0.55 * dur))
     if preview:
         target_len = min(target_len, 16.0)
-    if not beats:
+    if len(beats) < 8:   # beatless/near-beatless source -> uniform grid fallback
         beat_period = 1.35
         beats = [i * beat_period for i in range(int(dur / beat_period) + 1)]
         tempo = 60.0 / beat_period
@@ -110,28 +116,23 @@ def build(src, out_json, title_main, title_sub, preview=False, target_len=None):
     if preview:
         n_target = min(n_target, 12)
 
-    # ---- pick segment windows ------------------------------------------------
-    # walk the beat grid; prefer starts that coincide with scene changes (aligned
-    # cuts look intentional); skip first 2s (often channel intro) and last 1.5s.
-    usable = [b for b in grid if 1.8 <= b <= dur - 2.0]
-    if len(usable) < n_target:
-        usable = [b for b in grid if 0.5 <= b <= dur - 1.0]
+    # ---- selection: luma-gated, forward-only, overlap-free (D3) ----------------
+    luma = luma_profile_ffmpeg(src, fps=2, cache="/tmp/_montage_luma.json")
+    sel = Selector(grid, dur, luma=luma, min_y=30.0)
     scene_set = cuts
 
-    def pick_start(cursor):
-        cands = [b for b in usable if b >= cursor]
-        if not cands:
-            cands = usable
-        window = cands[:4]
-        best = min(window, key=lambda b: min((abs(b - c) for c in scene_set), default=9.9))
-        return best
+    def scene_score(b):
+        return min((abs(b - c) for c in scene_set), default=9.9)
 
-    # energy profile to place hero slow-mo & fast push
-    e_values = [energy_at(b, rms, times, 1.5) for b in usable]
-    ranked = sorted(range(len(usable)), key=lambda k: e_values[k], reverse=True)
+    # energy profile to place hero slow-mo & fast push (energetic styles only)
+    e_values = [energy_at(b, rms, times, 1.5) for b in sel.candidates]
+    ranked = sorted(range(len(sel.candidates)), key=lambda k: e_values[k], reverse=True)
+    hero_t = sel.candidates[ranked[0]] if (ranked and not preview) else None
+    hero2_t = sel.candidates[ranked[1]] if (len(ranked) > 1 and not preview) else None
+    hero_used = hero2_used = False
 
     segments = []
-    cursor = usable[0] if usable else 1.8
+    cursor = sel.candidates[0] if sel.candidates else 1.8
 
     for k in range(n_target):
         # rhythm: faster cuts mid-montage, longer at intro/outro
@@ -148,31 +149,56 @@ def build(src, out_json, title_main, title_sub, preview=False, target_len=None):
             out_dur = max(out_dur, 1.0)
         out_dur = round(min(max(out_dur, 0.55), 4.2), 3)
 
-        start = pick_start(cursor)
-        cursor = start + out_dur + base_out * 0.3
-        if cursor > dur - 1.6:                # wrap with slight offset (reuse w/ variation)
-            cursor = usable[0] + 0.37 if usable[0] + 0.37 < dur - 2 else usable[0]
-
         speed = 1.0
+        if hero_t is not None and not hero_used and abs(cursor - hero_t) <= base_out * 0.8:
+            speed = 0.5
+        elif hero2_t is not None and not hero2_used and abs(cursor - hero2_t) <= base_out * 0.8:
+            speed = 1.25
+        src_span = out_dur / speed
+
+        # prefer a scene-aligned candidate near the cursor within the free span
+        start = None
+        probe_i = min(range(len(sel.candidates)),
+                      key=lambda i: abs(sel.candidates[i] - cursor)) if sel.candidates else None
+        tried = set()
+        if probe_i is not None:
+            for i in sorted(range(len(sel.candidates)),
+                            key=lambda i: (scene_score(sel.candidates[i]),
+                                           abs(sel.candidates[i] - cursor)))[:6]:
+                c = sel.candidates[i]
+                if c < cursor - 1e-6 or i in tried:
+                    continue
+                tried.add(i)
+                if sel._overlaps(c, src_span) <= sel.max_overlap and c + src_span <= dur - 0.25:
+                    start = c
+                    sel.used.append((c, c + src_span))
+                    sel.pos = i + 1
+                    break
+        if start is None:
+            start = sel.pick(cursor, src_span)
+        if start is None:
+            break                      # D3: never wrap - stop filling instead
+        if speed == 0.5:
+            hero_used = True
+        elif speed == 1.25:
+            hero2_used = True
+        cursor = start + src_span + base_out * 0.3
+
         zoom = [1.0, 1.08, 1.0, 1.13, 1.0, 1.06][k % 6]
         if k == 0:
             zoom = 1.0
-        if k == n_target - 1:
-            zoom = 1.05
+        if speed == 0.5:
+            zoom = 1.15
 
         segments.append({"i": k, "src_start": round(start, 3), "out_dur": out_dur,
                          "speed": speed, "zoom": zoom})
 
-    # hero moments: slow-mo on the highest-energy window, 1.25x push on 2nd
-    if len(ranked) >= 3 and not preview:
-        hero = ranked[0]
-        idx = min(range(len(segments)), key=lambda j: abs(segments[j]["src_start"] - usable[hero]))
-        segments[idx]["speed"] = 0.5
-        segments[idx]["zoom"] = 1.15
-        fast = ranked[1]
-        idx2 = min(range(len(segments)), key=lambda j: abs(segments[j]["src_start"] - usable[fast]))
-        if segments[idx2]["speed"] == 1.0 and idx2 != idx:
-            segments[idx2]["speed"] = 1.25
+    for j, s in enumerate(segments):
+        s["i"] = j
+    audit = sel.audit(len(segments))
+    print(f"[timeline] selection audit: {audit['n_selected']}/{audit['n_candidates']} "
+          f"luma_dropped={audit['n_dropped_luma']} "
+          f"dark_excluded={len(audit['excluded_dark_ranges'])}", flush=True)
 
     # recompute src_dur from speed and clamp
     for s in segments:
@@ -180,12 +206,16 @@ def build(src, out_json, title_main, title_sub, preview=False, target_len=None):
         s["out_dur"] = round(s["src_dur"] * s["speed"], 3)
 
     # ---- transitions ----------------------------------------------------------
+    if not segments:
+        raise RuntimeError(
+            f"[timeline] no clean segments selectable (luma gate dropped "
+            f"{audit['n_dropped_luma']}, source {dur:.1f}s) - refusing to fabricate a timeline")
     PSEUDO_CUT, SMOOTH, FLASH, SECTION = 0.05, 0.18, 0.14, 0.30
     per_section = max(6, n_target // 3)
-    for k in range(n_target - 1):
+    for k in range(len(segments) - 1):
         if k == 0:
             tr = ("fade", SMOOTH)
-        elif (k + 1) == n_target - 1:
+        elif (k + 1) == len(segments) - 1:
             tr = ("fadeblack", SMOOTH)
         elif (k + 1) % per_section == 0:
             tr = ("fadewhite", FLASH)
@@ -202,7 +232,8 @@ def build(src, out_json, title_main, title_sub, preview=False, target_len=None):
             "out_w": OUT_W // (2 if preview else 1), "out_h": OUT_H // (2 if preview else 1),
             "out_fps": OUT_FPS, "target_dur": round(total, 2), "tempo": round(tempo, 1),
             "title_main": title_main, "title_sub": title_sub, "preview": preview,
-            "n_segments": len(segments)}
+            "n_segments": len(segments), "vertical": "cover_crop",
+            "selection_audit": audit}
     os.makedirs(os.path.dirname(os.path.abspath(out_json)), exist_ok=True)
     json.dump({"meta": meta, "segments": segments}, open(out_json, "w"), indent=1)
     print(f"[timeline] wrote {out_json}: {len(segments)} segments, master ~{total:.1f}s", flush=True)

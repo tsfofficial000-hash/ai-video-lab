@@ -32,11 +32,12 @@ style_cfg = dict(styles["beat_montage"])
 luma = [{"t": round(i * 0.5, 2), "y": 110} for i in range(int(DUR * 2))]
 
 try:
-    segs = edit_plan.build_timeline(meta, beats_json, style_cfg, "beat_montage", 26.0, luma=luma)
+    res = edit_plan.build_timeline(meta, beats_json, style_cfg, "beat_montage", 26.0, luma=luma)
     print("  (build_timeline accepted luma= kwarg)")
 except TypeError:
-    segs = edit_plan.build_timeline(meta, beats_json, style_cfg, "beat_montage", 26.0)
+    res = edit_plan.build_timeline(meta, beats_json, style_cfg, "beat_montage", 26.0)
     print("  (build_timeline has no luma= kwarg - luma gate absent)")
+segs = res[0] if isinstance(res, tuple) else res
 
 # constraint 1: no duplicate src_starts
 starts = [round(s["src_start"], 3) for s in segs]
@@ -67,7 +68,8 @@ ok("forward-only selection: opening visited once")
 dark_luma = [{"t": round(i * 0.5, 2),
               "y": 8 if 10.0 <= i * 0.5 <= 14.0 else 110} for i in range(int(DUR * 2))]
 try:
-    segs2 = edit_plan.build_timeline(meta, beats_json, style_cfg, "beat_montage", 20.0, luma=dark_luma)
+    res2 = edit_plan.build_timeline(meta, beats_json, style_cfg, "beat_montage", 20.0, luma=dark_luma)
+    segs2 = res2[0] if isinstance(res2, tuple) else res2
     bad = [s for s in segs2 if 9.7 <= s["src_start"] <= 14.3]
     if bad:
         fail(f"luma gate ignored: {len(bad)} segments start inside dark window 10-14s")

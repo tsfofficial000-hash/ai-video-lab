@@ -3,10 +3,12 @@
 Style-aware: hook selection, beat/scene aligned cuts, pacing per mood, ducking plan."""
 import argparse
 import json
+import os
 
 REPO_ROOT = __import__("os").path.abspath(
     __import__("os").path.join(__file__, "..", "..", ".."))
 from utils import jdump, jload, record_stage
+from selection import Selector, luma_profile_ffmpeg
 import time
 
 
@@ -28,11 +30,19 @@ def pick_hook(transcript, beats, style):
     return best["text"].strip()[:90]
 
 
-def build_timeline(source_meta, beats, style_cfg, style, target_len):
-    """Reuse proven montage timeline logic; emit engine-compatible timeline.json."""
+def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
+                    luma_cache=None):
+    """Reuse proven montage timeline logic; emit engine-compatible timeline.json.
+    D3: selection is forward-only, luma-gated, overlap-free (see selection.Selector).
+    `luma` = optional [{t,y}] profile; when absent it is computed from the source
+    (cached at luma_cache / reports/luma.json) so the gate always has real data."""
     dur = source_meta["duration"]
+    src_path = source_meta.get("path")
+    if luma is None:
+        cache = luma_cache or "reports/luma.json"
+        luma = luma_profile_ffmpeg(src_path, fps=2, cache=cache) if src_path else []
     beats_list = beats.get("beats") or []
-    if not beats_list:
+    if len(beats_list) < 8:   # beatless/near-beatless source -> uniform grid fallback
         beat_period = 1.35
         beats_list = [i * beat_period for i in range(int(dur / beat_period) + 1)]
     tempo = beats.get("tempo") or (60.0 / 1.35)
@@ -41,13 +51,17 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len):
     mult = {"slow": 2.6, "smooth": 1.8, "speech": 2.2, "fast": 1.0, "energetic": 1.4}.get(pacing, 1.4)
     base_out = min(max(beat_period * mult, 0.55), 4.2)
 
-    usable = [b for b in sorted(set(round(b, 3) for b in beats_list)) if 1.5 <= b <= dur - 2.0]
-    if not usable:
-        usable = [0.5 + i * base_out for i in range(int((dur - 2) / base_out))]
     n_target = max(6, int(round(target_len / base_out)))
 
+    sel = Selector(beats_list, dur, luma=luma, min_y=30.0)
     segs = []
-    cursor = usable[0]
+    cursor = sel.candidates[0] if sel.candidates else 1.5
+    peaks = [p for p in (beats.get("energy_peak_starts") or [])
+             if any(c - 1.0 <= p <= c + 1.0 for c in sel.candidates)]
+    hero_t = peaks[0] if (peaks and pacing in ("energetic", "fast")) else None
+    hero2_t = peaks[1] if len(peaks) > 1 and pacing in ("energetic", "fast") else None
+    hero_used = hero2_used = False
+
     for k in range(n_target):
         if k == 0:
             out_dur = base_out * 1.9
@@ -57,26 +71,33 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len):
             wiggle = [1.0, 0.85, 0.75, 1.1, 0.9, 0.8][k % 6]
             out_dur = base_out * wiggle
         out_dur = round(min(max(out_dur, 0.55), 5.0), 3)
-        cands = [b for b in usable if b >= cursor] or usable
-        start = cands[0]
-        cursor = start + out_dur + base_out * 0.3
-        if cursor > dur - 1.6:
-            cursor = usable[0] + 0.37
+
+        speed = 1.0
+        if hero_t is not None and not hero_used and abs(cursor - hero_t) <= beat_period * 1.5:
+            speed = 0.5
+        elif hero2_t is not None and not hero2_used and abs(cursor - hero2_t) <= beat_period * 1.5:
+            speed = 1.25
+        src_span = out_dur / speed
+        start = sel.pick(cursor, src_span)
+        if start is None:
+            break                      # D3: never wrap - stop filling instead
+        if speed == 0.5:
+            hero_used = True
+        elif speed == 1.25:
+            hero2_used = True
         zoom = ([1.0, 1.08, 1.0, 1.13, 1.0, 1.06][k % 6]
                 if style_cfg.get("cut_style") == "beat_grid" else 1.0)
         segs.append({"i": k, "src_start": round(start, 3), "out_dur": out_dur,
-                     "speed": 1.0, "zoom": zoom})
+                     "speed": speed, "zoom": zoom})
+        cursor = start + src_span + base_out * 0.3
 
-    # hero slow-mo at strongest energy peak (energetic styles only)
-    peaks = beats.get("energy_peak_starts", [])
-    if peaks and pacing in ("energetic", "fast") and len(segs) > 4:
-        idx = min(range(len(segs)), key=lambda j: abs(segs[j]["src_start"] - peaks[0]))
-        segs[idx]["speed"] = 0.5
-        segs[idx]["zoom"] = max(segs[idx]["zoom"], 1.12)
-        if len(peaks) > 1:
-            j = min(range(len(segs)), key=lambda q: abs(segs[q]["src_start"] - peaks[1]))
-            if segs[j]["speed"] == 1.0:
-                segs[j]["speed"] = 1.25
+    # reindex after possible early stop
+    for j, s in enumerate(segs):
+        s["i"] = j
+    audit = sel.audit(len(segs))
+    if len(segs) < 6:
+        print(f"[plan] WARNING: only {len(segs)} clean segments available "
+              f"(luma gate dropped {audit['n_dropped_luma']})", flush=True)
 
     for s in segs:
         s["src_dur"] = round(min(s["out_dur"] / s["speed"], max(0.4, dur - 0.25 - s["src_start"])), 3)
@@ -95,8 +116,9 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len):
             segs[k]["transition_after"] = {"type": style_cfg.get("section_flash", "fadewhite"), "dur": 0.14}
         else:
             segs[k]["transition_after"] = {"type": "fade", "dur": 0.05}
-    segs[-1]["transition_after"] = {"type": "none", "dur": 0.0}
-    return segs
+    if segs:
+        segs[-1]["transition_after"] = {"type": "none", "dur": 0.0}
+    return segs, audit
 
 
 def main():
@@ -121,7 +143,8 @@ def main():
     target = a.target_len or max(lo, min(hi, dur * 0.55))
     target = min(target, max(10, dur - 2))
 
-    segments = build_timeline(meta, beats, style_cfg, a.style, target)
+    source_meta = dict(meta, path=os.environ.get("CF_SOURCE_PATH") or meta.get("path"))
+    segments, audit = build_timeline(source_meta, beats, style_cfg, a.style, target)
     total = sum(s["out_dur"] for s in segments) - sum(
         s["transition_after"]["dur"] for s in segments[:-1])
 
@@ -165,10 +188,19 @@ def main():
                     "out_w": 1080, "out_h": 1920, "out_fps": 30,
                     "target_dur": round(total, 2), "tempo": beats.get("tempo", 0),
                     "title_main": plan["title_main"], "title_sub": plan["title_sub"],
-                    "preview": False, "n_segments": len(segments)},
+                    "preview": False, "n_segments": len(segments),
+                    "vertical": plan["vertical_plan"],
+                    "selection_audit": audit},
            "segments": segments}, f"{a.out}/timeline.json")
-    record_stage(a.reports, "06-edit-decision", "success", t0=t0)
-    print(f"plan: {len(segments)} segs, {total:.1f}s, hook={bool(hook_text)}, grade={plan['color_grade']}")
+    jdump(audit, f"{a.reports}/selection_audit.json")
+    record_stage(a.reports, "06-edit-decision", "success", t0=t0,
+                 optimization_applied="D3 selection: luma gate + forward-only + overlap cap",
+                 optimization_result=(f"candidates={audit['n_candidates']} "
+                                      f"selected={audit['n_selected']} "
+                                      f"dropped_luma={audit['n_dropped_luma']}"))
+    print(f"plan: {len(segments)} segs, {total:.1f}s, hook={bool(hook_text)}, "
+          f"grade={plan['color_grade']}, audit={audit['n_selected']}/"
+          f"{audit['n_candidates']} luma_dropped={audit['n_dropped_luma']}")
 
 
 if __name__ == "__main__":

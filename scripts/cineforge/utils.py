@@ -63,7 +63,7 @@ def record_stage(reports_dir, stage_name, status, extra=None, t0=None, retries=0
         "artifact_size_mb": None,
         "retries": retries,
         "bottleneck_detected": bottleneck,
-        "optimization_applied": optimization,
+        "optimization_applied": optimization_applied,
         "optimization_result": optimization_result,
     }
     if extra:

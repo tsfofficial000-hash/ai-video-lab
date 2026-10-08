@@ -43,15 +43,17 @@ try:
 except (TypeError, KeyError) as e:
     fail(f"cover_crop mode not implemented: {e}")
 
-# 3. G4 rule: default blur_fill on 16:9 must either raise coverage >= 55% or refuse
+# 3. G4 rule: the DEFAULT mode must satisfy fg >= 55% or full-bleed for 16:9
+#    (blur_fill stays available as an explicit fallback that G4 will flag)
 try:
-    fw, fh, cw, ch = rs.fg_geometry(dict(meta, vertical="blur_fill"), seg["zoom"])
+    fw, fh, cw, ch = rs.fg_geometry(dict(meta), seg["zoom"])  # no vertical key -> default
     cov = ch / meta["out_h"]
     if cov < 0.55:
-        fail(f"blur_fill 16:9 foreground coverage {cov:.0%} < 55% with no cover_crop escalation")
-    ok(f"blur_fill coverage {cov:.0%} >= 55%")
+        fail(f"default-mode 16:9 foreground coverage {cov:.0%} < 55% "
+             f"(default must be cover_crop/full-bleed, blur_fill only fallback)")
+    ok(f"default-mode coverage {cov:.0%} (full-bleed via cover_crop)")
 except (TypeError, KeyError) as e:
-    fail(f"geometry mode-awareness missing: {e}")
+    fail(f"mode-aware geometry missing: {e}")
 
 # 4. functional: cover_crop segment renders and is full-bleed
 with tempfile.TemporaryDirectory() as td:

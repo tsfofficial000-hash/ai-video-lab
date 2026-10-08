@@ -22,7 +22,7 @@ def load_module(name, rel_path):
 
 
 def synth_video(path, dur=4.0, w=540, h=960, bright=True, drawtext=None):
-    """Synthetic test clip: moving gradient (bright) or dark flat."""
+    """Synthetic test clip: moving gradient (bright) or dark flat, with sine audio."""
     if bright:
         color = "gradients=s={w}x{h}:d={dur}:c0=0x303050:c1=0xE0E0FF,format=yuv420p".format(
             w=w, h=h, dur=dur)
@@ -34,7 +34,10 @@ def synth_video(path, dur=4.0, w=540, h=960, bright=True, drawtext=None):
         vf += (",drawtext=fontfile=" + font + ":text='" + drawtext +
                "':fontsize=72:fontcolor=white:x=(w-tw)/2:y=h*0.72:box=1:boxcolor=black@0.5")
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", vf,
-           "-t", str(dur), "-r", "30", "-pix_fmt", "yuv420p", path]
+           "-f", "lavfi", "-i", f"sine=frequency=330:duration={dur}",
+           "-map", "0:v", "-map", "1:a",
+           "-t", str(dur), "-r", "30", "-pix_fmt", "yuv420p",
+           "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", path]
     subprocess.run(cmd, check=True)
     return path
 

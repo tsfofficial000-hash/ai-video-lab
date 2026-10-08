@@ -39,6 +39,14 @@ def find_font():
     raise RuntimeError("no bold sans font found for drawtext")
 
 
+def real_duration(path):
+    """Actual file duration (frames are the ground truth for xfade offsets)."""
+    import json as _json
+    out = subprocess.check_output(["ffprobe", "-v", "error", "-print_format", "json",
+                                   "-show_format", path]).decode()
+    return float(_json.loads(out)["format"]["duration"])
+
+
 def xfade_chain(n, segs, ow, oh, fps):
     """returns (filtergraph_video_prefix, last_label)."""
     parts = []
@@ -87,6 +95,17 @@ def main():
     tl = json.load(open(a.timeline))
     meta, segs = tl["meta"], tl["segments"]
     n = len(segs)
+
+    # ground truth: use ACTUAL encoded segment durations for offset math
+    planned = sum(s["out_dur"] for s in segs)
+    for s in segs:
+        p = os.path.join(a.segdir, f"seg_{s['i']:03d}.mp4")
+        try:
+            s["out_dur"] = round(min(real_duration(p), s["out_dur"] + 0.05), 3)
+        except Exception:
+            pass  # keep planned duration on probe failure
+    real_total = sum(s["out_dur"] for s in segs)
+    print(f"[assemble] planned={planned:.2f}s real_sum={real_total:.2f}s", flush=True)
     ow, oh, fps = meta["out_w"], meta["out_h"], meta["out_fps"]
     total = sum(s["out_dur"] for s in segs) - sum(
         s["transition_after"]["dur"] for s in segs[:-1])

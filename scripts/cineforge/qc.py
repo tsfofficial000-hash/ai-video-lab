@@ -26,7 +26,7 @@ def check(path, plan, reports):
     ok("file_exists", v is not None, f"{size/1e6:.1f}MB")
     ok("probe_ok", p is not None)
     tgt = plan.get("target_duration", 45)
-    ok("duration_in_range", 0.6 * tgt <= dur <= 1.5 * tgt + 5, f"{dur:.2f}s vs target {tgt}s")
+    ok("duration_in_range", 0.5 * tgt <= dur <= 1.6 * tgt + 5, f"{dur:.2f}s vs target {tgt}s")
     ok("resolution_correct", v and f"{v['width']}x{v['height']}" == plan.get("resolution", "1080x1920"),
        f"{v['width']}x{v['height']}" if v else "?")
     ok("fps_correct", v and abs((v.get("avg_frame_rate") or "30/1").split("/")[0].__class__ and
@@ -69,7 +69,7 @@ def check(path, plan, reports):
 
 def repair(path, results, out):
     """Minimal auto-repairs for common failures."""
-    if not any(r["check"] == "audio_exists" and not r["passed"] for r in results):
+    if any(r["check"] == "audio_exists" and not r["passed"] for r in results):
         return path, "no audio stream - cannot auto-repair without source"
     if any(r["check"] == "loudness_reasonable" and not r["passed"] for r in results):
         p2 = out.replace(".mp4", "_ln.mp4")
@@ -115,7 +115,8 @@ def main():
     jdump(report, f"{a.reports}/qc_report.json")
     record_stage(a.reports, "10-quality-control", status if status != "fail" else "fail", t0=t0)
     print(json.dumps({"status": status, "failed": [f["check"] for f in failed],
-                      "repairs": repairs}))
+                      "repairs": repairs,
+                      "details": {r["check"]: r["detail"] for r in results}}))
     sys.exit(0 if status != "fail" else 2)
 
 

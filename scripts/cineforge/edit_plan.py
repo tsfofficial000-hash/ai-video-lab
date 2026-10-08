@@ -5,7 +5,7 @@ import argparse
 import json
 
 REPO_ROOT = __import__("os").path.abspath(
-    __import__("os").path.join(__file__, "..", ".."))
+    __import__("os").path.join(__file__, "..", "..", ".."))
 from utils import jdump, jload, record_stage
 import time
 

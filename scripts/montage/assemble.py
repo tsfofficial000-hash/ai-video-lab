@@ -143,8 +143,13 @@ def main():
         f"enable='gte(t,{total-2.4:.2f})'",
     ]
 
-    post_v = ",".join(overlays + [
-        f"fade=t=in:st=0:d=0.45", f"fade=t=out:st={max(0.0,total-0.7):.3f}:d=0.7"])
+    last_tr = segs[-2]["transition_after"]["type"] if len(segs) > 1 else "none"
+    fades = [f"fade=t=in:st=0:d=0.45"]
+    if last_tr != "fadeblack":
+        # fadeblack already lands the outro on black; stacking a second fade
+        # doubles the detectable black region (G1 budget)
+        fades.append(f"fade=t=out:st={max(0.0,total-0.7):.3f}:d=0.7")
+    post_v = ",".join(overlays + fades)
     post_a = (f"loudnorm=I=-14:TP=-1.5:LRA=11,"
               f"afade=t=out:st={max(0.0,total-0.9):.3f}:d=0.9")
 

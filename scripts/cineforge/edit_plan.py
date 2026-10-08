@@ -134,7 +134,10 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
         elif k == 0:
             segs[k]["transition_after"] = {"type": "fade", "dur": 0.18}
         elif (k + 1) == len(segs) - 1:
-            segs[k]["transition_after"] = {"type": "fadeblack", "dur": 0.4}
+            # G1 2% black budget: scale the outro fade with runtime
+            est_total = sum(x["out_dur"] for x in segs)
+            fb = round(min(0.4, max(0.12, est_total * 0.018)), 3)
+            segs[k]["transition_after"] = {"type": "fadeblack", "dur": fb}
         elif (k + 1) % per_section == 0:
             segs[k]["transition_after"] = {"type": "fadewhite", "dur": flash_dur}
             section_times.append(round(cum, 2))

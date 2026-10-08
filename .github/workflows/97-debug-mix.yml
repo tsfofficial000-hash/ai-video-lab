@@ -1,0 +1,43 @@
+name: "97 - Debug: audio mix graph matrix"
+on:
+  workflow_dispatch:
+
+permissions: { contents: write }
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          ffmpeg -version | head -1
+          mkdir -p /tmp/mx && cd /tmp/mx
+          ffmpeg -v error -y -f lavfi -i "sine=frequency=300:duration=4" \
+            -af "volume='if(lt(mod(t,1),0.5),1,0)':eval=frame" -ar 48000 -ac 2 voice.wav
+          ffmpeg -v error -y -f lavfi -i "sine=frequency=110:duration=4" \
+            -af volume=0.8 -ar 48000 -ac 2 music.mp3
+          echo "=== variant A: anull + [voice] label (current) ==="
+          ffmpeg -v error -y -i voice.wav -i music.mp3 -filter_complex \
+            "[0:a]anull[voice];[1:a]volume=0.9[mmain];[mmain][voice]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=300:makeup=1.0[ducked];[ducked][voice]amix=inputs=2:duration=first,volume=2.0,loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=in:d=0.6,volume=1.0[out]" \
+            -map "[out]" -ar 48000 -ac 2 a.wav && echo "A PASS" || echo "A FAIL"
+          echo "=== variant B: no anull, direct [0:a] key ==="
+          ffmpeg -v error -y -i voice.wav -i music.mp3 -filter_complex \
+            "[1:a]volume=0.9[bed];[bed][0:a]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=300:makeup=1.0[duck];[duck][0:a]amix=inputs=2:duration=first,volume=2.0,loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=in:d=0.6,volume=1.0[out]" \
+            -map "[out]" -ar 48000 -ac 2 b.wav && echo "B PASS" || echo "B FAIL"
+          echo "=== variant C: A minus loudnorm ==="
+          ffmpeg -v error -y -i voice.wav -i music.mp3 -filter_complex \
+            "[0:a]anull[voice];[1:a]volume=0.9[mmain];[mmain][voice]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=300:makeup=1.0[ducked];[ducked][voice]amix=inputs=2:duration=first,volume=2.0,afade=t=in:d=0.6,volume=1.0[out]" \
+            -map "[out]" -ar 48000 -ac 2 c.wav && echo "C PASS" || echo "C FAIL"
+          echo "=== variant D: A minus sidechaincompress (anull+voice preserved) ==="
+          ffmpeg -v error -y -i voice.wav -i music.mp3 -filter_complex \
+            "[0:a]anull[voice];[1:a]volume=0.9[mmain];[mmain]anull[ducked];[ducked][voice]amix=inputs=2:duration=first,volume=2.0,loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=in:d=0.6,volume=1.0[out]" \
+            -map "[out]" -ar 48000 -ac 2 d.wav && echo "D PASS" || echo "D FAIL"
+          echo "=== variant E: real Sintel source instead of sine ==="
+          curl -sSL --max-time 120 -o src.mp4 "https://download.blender.org/durian/trailer/sintel_trailer-480p.mp4" || true
+          if [ -s src.mp4 ]; then
+            ffmpeg -v error -y -i src.mp4 -i music.mp3 -filter_complex \
+              "[0:a]anull[voice];[1:a]volume=0.9[mmain];[mmain][voice]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=300:makeup=1.0[ducked];[ducked][voice]amix=inputs=2:duration=first,volume=2.0,loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=in:d=0.6,volume=1.0[out]" \
+              -map "[out]" -ar 48000 -ac 2 e.wav && echo "E PASS" || echo "E FAIL"
+            ffprobe -v error -show_entries stream=codec_type -of csv=p=0 src.mp4
+          fi

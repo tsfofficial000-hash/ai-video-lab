@@ -23,19 +23,23 @@ jobs:
       - name: Dry-run gate (2-segment micro render)
         run: |
           set -e
-          TL=$(python3 -c "import glob;c=glob.glob('plan/**/timeline.json',recursive=True)+glob.glob('out/timeline.json');print(c[0]);assert c" )
-          echo "timeline=$TL"
-          cd scripts/cineforge && python3 render_ffmpeg.py --source ../../source.mp4 \
-            --timeline "../$TL" --dryrun
+          TL=$(python3 -c "import glob,os;print(os.path.abspath(glob.glob('plan/**/timeline.json',recursive=True)[0]))")
+          SRC=$(python3 -c "import glob,os;print(os.path.abspath(glob.glob('source.mp4')[0]))")
+          echo "timeline=$TL source=$SRC pwd=$(pwd)"
+          ls -la "$(dirname "$TL")" || true
+          cd scripts/cineforge && python3 render_ffmpeg.py --source "$SRC" \
+            --timeline "$TL" --dryrun
       - name: Full render (segments -> xfade master -> mix mux)
         run: |
           set -e
-          TL=$(python3 -c "import glob;c=glob.glob('plan/**/timeline.json',recursive=True)+glob.glob('out/timeline.json');print(c[0]);assert c")
-          PL=$(python3 -c "import glob;c=glob.glob('plan/**/edit_plan.json',recursive=True)+glob.glob('reports/edit_plan.json');print(c[0]);assert c")
-          MX=$(python3 -c "import glob;c=glob.glob('mix/**/mixed_audio.wav',recursive=True)+glob.glob('media/mixed_audio.wav');print(c[0] if c else '')")
-          cd scripts/cineforge && python3 render_ffmpeg.py --source ../../source.mp4 \
-            --timeline "../$TL" --plan "../$PL" \
-            --mixed "../$MX" --out ../../out/master.mp4 \
+          TL=$(python3 -c "import glob,os;print(os.path.abspath(glob.glob('plan/**/timeline.json',recursive=True)[0]))")
+          PL=$(python3 -c "import glob,os;print(os.path.abspath(glob.glob('plan/**/edit_plan.json',recursive=True)[0]))")
+          MX=$(python3 -c "import glob,os;print(os.path.abspath(glob.glob('mix/**/mixed_audio.wav',recursive=True)[0]) if glob.glob('mix/**/mixed_audio.wav',recursive=True) else '')")
+          SRC=$(python3 -c "import glob,os;print(os.path.abspath(glob.glob('source.mp4')[0]))")
+          echo "TL=$TL PL=$PL MX=$MX SRC=$SRC"
+          cd scripts/cineforge && python3 render_ffmpeg.py --source "$SRC" \
+            --timeline "$TL" --plan "$PL" \
+            --mixed "$MX" --out "$GITHUB_WORKSPACE/out/master.mp4" \
             ${{ inputs.draft == 'true' && '--draft' || '' }}
           cd ../.. && ffprobe -v error -show_entries format=duration,size -of default=nw=1 out/master.mp4
       - uses: actions/upload-artifact@v4

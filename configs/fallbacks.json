@@ -1,0 +1,44 @@
+{
+  "rules": [
+    {
+      "condition": "rembg_missing_or_slow",
+      "action": "skip text-behind-subject, use normal title overlay",
+      "cost_note": "rembg on 2-core runner ~20-60s/frame-range; only first 3s would qualify"
+    },
+    {
+      "condition": "mediapipe_missing_or_slow",
+      "action": "center crop 9:16, static; else blurred-background fill",
+      "cost_note": "MediaPipe face detection ~15fps analysis on runner; acceptable but not required"
+    },
+    {
+      "condition": "demucs_missing_or_slow",
+      "action": "FFmpeg sidechaincompress ducking + afftdn noise reduction",
+      "cost_note": "Demucs CPU separation of a 3-min track ~6-10 min on runner; not worth latency"
+    },
+    {
+      "condition": "transcription_too_slow",
+      "action": "draft: faster-whisper base int8; final: small int8; skip captions if still >8min",
+      "cost_note": "small int8 ~4.2x realtime measured in prior runs (whisper-asr.yml evidence)"
+    },
+    {
+      "condition": "render_too_slow",
+      "action": "draft at 540x960 preset veryfast crf 23; final at 1080x1920 preset medium crf 19",
+      "cost_note": "draft is ~4x faster end-to-end"
+    },
+    {
+      "condition": "download_fails",
+      "action": "acquisition ladder: yt-dlp multi-client -> loader.to tunnel -> release asset -> safe sample",
+      "cost_note": "see acquire_source.sh; every failure mode logged"
+    },
+    {
+      "condition": "music_download_fails",
+      "action": "generate ambient pad with ffmpeg (see music_moods.json fallback)",
+      "cost_note": "instant, zero network"
+    },
+    {
+      "condition": "no_beats_detected",
+      "action": "uniform 1.35s cut grid; scene-change alignment preferred",
+      "cost_note": "graceful, proven in synthetic dry-run"
+    }
+  ]
+}

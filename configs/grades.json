@@ -1,0 +1,34 @@
+{
+  "natural": {
+    "description": "clean, true-to-source",
+    "filters": "eq=contrast=1.04:saturation=1.06"
+  },
+  "cinematic_teal_orange": {
+    "description": "blockbuster split-tone",
+    "filters": "eq=contrast=1.07:saturation=1.14:brightness=0.004,colorbalance=bs=0.06:ms=-0.02:hs=-0.04:bm=-0.02:mm=0.0:hm=0.03,vignette=PI/4.6,unsharp=5:5:0.35"
+  },
+  "dark_moody": {
+    "description": "low-key contrast",
+    "filters": "eq=contrast=1.12:brightness=-0.03:saturation=0.9,colorbalance=bs=0.03:ms=0.0:hs=-0.06,vignette=PI/4.2"
+  },
+  "sad_cold": {
+    "description": "desaturated cool",
+    "filters": "eq=contrast=0.98:saturation=0.72:brightness=-0.02,colorbalance=bs=0.05:ms=0.0:hs=-0.02,vignette=PI/4.8"
+  },
+  "warm_storytime": {
+    "description": "soft warm lift",
+    "filters": "eq=contrast=1.03:saturation=1.08:brightness=0.01,colorbalance=bs=-0.03:ms=0.0:hs=0.05"
+  },
+  "black_and_white_dramatic": {
+    "description": "mono, heavy contrast",
+    "filters": "hue=s=0,eq=contrast=1.18:brightness=-0.02,vignette=PI/4.2"
+  },
+  "vintage_film": {
+    "description": "faded filmic",
+    "filters": "eq=contrast=0.95:saturation=0.85:brightness=0.02,colorbalance=bs=-0.04:ms=0.02:hs=0.06,noise=alls=6:allf=t+u"
+  },
+  "anime_vivid": {
+    "description": "punchy saturation",
+    "filters": "eq=contrast=1.1:saturation=1.3,unsharp=5:5:0.6"
+  }
+}

@@ -1,0 +1,43 @@
+name: "06 - Edit Decision"
+on:
+  workflow_dispatch:
+    inputs:
+      style: { description: "style key (configs/styles.json)", required: false, default: "beat_montage" }
+      target_len: { description: "target seconds", required: false, default: "" }
+      title: { description: "title overlay", required: false, default: "" }
+  workflow_call:
+    inputs:
+      style: { type: string, default: "beat_montage" }
+      target_len: { type: string, default: "" }
+      title: { type: string, default: "" }
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+      - uses: actions/download-artifact@v4
+        with: { name: stage-02-ingest }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-03-audio, path: reports }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-04-transcript, path: reports }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-05-beats, path: reports }
+      - name: Build EDL
+        run: |
+          set -e
+          cd scripts/cineforge && python3 edit_plan.py --reports ../../reports --out ../../out \
+            --style "${{ inputs.style || 'beat_montage' }}" \
+            --target-len "${{ inputs.target_len }}" \
+            --title "${{ inputs.title || 'MONTAGE' }}"
+          cd ../.. && python3 -c "import json;p=json.load(open('reports/edit_plan.json'));print('style',p['style'],'target',p['target_duration'],'segs',len(p['segments']))"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-06-plan
+          path: |
+            reports/edit_plan.json
+            out/timeline.json
+          retention-days: 3

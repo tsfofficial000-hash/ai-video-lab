@@ -1,0 +1,29 @@
+name: "02 - Ingest & Proxy"
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+      - uses: actions/download-artifact@v4
+        with: { name: stage-01-assets }
+      - name: Probe + proxy + contact sheet
+        run: |
+          set -e
+          chmod +x scripts/cineforge/make_proxy.sh
+          bash scripts/cineforge/make_proxy.sh source.mp4 .
+          cat reports/source_metadata.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-02-ingest
+          path: |
+            reports/source_metadata.json
+            media/proxy.mp4
+            media/audio.wav
+            media/contact.jpg
+          retention-days: 3

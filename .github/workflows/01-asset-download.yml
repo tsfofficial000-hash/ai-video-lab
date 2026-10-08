@@ -1,0 +1,81 @@
+name: "01 - Asset Download"
+on:
+  workflow_dispatch:
+    inputs:
+      source_url: { description: "Source video URL (empty = safe sample)", required: false, default: "" }
+      music_url: { description: "Music URL (empty = mood-based FreePD)", required: false, default: "" }
+      mood: { description: "Music mood", required: false, default: "cinematic" }
+      loader_job_id: { description: "Pre-existing loader.to job id", required: false, default: "" }
+  workflow_call:
+    inputs:
+      source_url: { type: string, default: "" }
+      music_url: { type: string, default: "" }
+      mood: { type: string, default: "cinematic" }
+      loader_job_id: { type: string, default: "" }
+
+permissions: { contents: write }
+
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+
+      - name: Acquire source (ladder: yt-dlp -> loader tunnel -> release -> safe sample)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LOADER_JOB_ID: ${{ inputs.loader_job_id }}
+        run: |
+          set -e
+          chmod +x scripts/montage/acquire_source.sh
+          URL="${{ inputs.source_url }}"
+          if [ -z "$URL" ]; then
+            # safe open-license fallback: Big Buck Bunny 10s clip (Blender Foundation, CC-BY)
+            curl -sL --max-time 300 -o source.mp4 \
+              "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4" || true
+          fi
+          if [ ! -s source.mp4 ]; then
+            bash scripts/montage/acquire_source.sh "$URL" source.mp4 source-v1
+          fi
+          ffprobe -v error -show_entries format=duration -of csv=p=0 source.mp4
+
+      - name: Publish source to release source-v1 (self-healing fallback for future runs)
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          SIZE=$(stat -c%s source.mp4 || echo 0)
+          if [ "$SIZE" -lt 1900000000 ] && [ "$SIZE" -gt 1000000 ]; then
+            gh release view source-v1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+              gh release create source-v1 --repo "$GITHUB_REPOSITORY" \
+                --title "source asset cache" --notes "auto-uploaded acquisition fallback" || true
+            gh release upload source-v1 source.mp4 --repo "$GITHUB_REPOSITORY" --clobber || true
+          fi
+
+      - name: Music (mood-based CC0)
+        run: |
+          python3 scripts/cineforge/fetch_music.py \
+            --mood "${{ inputs.mood || 'cinematic' }}" \
+            --url "${{ inputs.music_url }}" \
+            --out media/music.mp3 --manifest reports/media_manifest.json || true
+
+      - name: Manifest (source)
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          d = json.loads(subprocess.check_output(["ffprobe","-v","error","-print_format","json","-show_format", "source.mp4"]).decode())
+          m = json.load(open("reports/media_manifest.json")) if __import__("os").path.isfile("reports/media_manifest.json") else {}
+          m["source_video"] = {"url": "${{ inputs.source_url }}", "duration": float(d["format"]["duration"]),
+                               "license": "user-provided; verify rights before publishing" if "${{ inputs.source_url }}" else "Blender Foundation CC-BY (safe sample)",
+                               "safe_for_shorts": bool("${{ inputs.source_url }}") }
+          json.dump(m, open("reports/media_manifest.json","w"), indent=1)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-01-assets
+          path: |
+            source.mp4
+            media/music.mp3
+            reports/media_manifest.json
+          retention-days: 3

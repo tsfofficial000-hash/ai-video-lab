@@ -1,0 +1,28 @@
+name: "10 - Quality Control"
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  qc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+      - uses: actions/download-artifact@v4
+        with: { name: stage-09-final, path: final }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-06-plan, path: plan }
+      - name: QC gate + auto-repair
+        run: |
+          set -e
+          cd scripts/cineforge && python3 qc.py --video ../final/out/final.mp4 \
+            --plan ../plan/reports/edit_plan.json --reports ../../reports
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-10-qc
+          path: |
+            reports/qc_report.json
+            final/out/final.mp4
+          retention-days: 7

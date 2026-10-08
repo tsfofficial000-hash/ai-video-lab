@@ -1,0 +1,46 @@
+name: "09 - Captions & Grade"
+on:
+  workflow_dispatch:
+    inputs:
+      caption_style: { description: "empty = from plan", required: false, default: "" }
+  workflow_call:
+    inputs:
+      caption_style: { type: string, default: "" }
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+      - uses: actions/download-artifact@v4
+        with: { name: stage-08-render, path: render }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-04-transcript, path: transcript }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-06-plan, path: plan }
+      - name: Generate + burn captions (libass), letterbox per plan
+        run: |
+          set -e
+          CS=$(python3 -c "import json;p=json.load(open('plan/reports/edit_plan.json'));print(p.get('caption_style') or '')")
+          CS="${{ inputs.caption_style || '' }}"; CS="${CS:-$(python3 -c "import json;p=json.load(open('plan/reports/edit_plan.json'));print(p.get('caption_style') or '')")}"
+          cd scripts/cineforge
+          if [ -n "$CS" ]; then
+            python3 captions.py --transcript ../transcript/reports/transcript.json \
+              --plan ../plan/reports/edit_plan.json --style "$CS" --out ../media/captions.ass
+            ffmpeg -v error -y -i ../render/out/master.mp4 -vf "ass=../media/captions.ass" \
+              -c:v libx264 -preset medium -crf 19 -pix_fmt yuv420p -c:a copy \
+              -movflags +faststart ../out/final.mp4
+          else
+            cp ../render/out/master.mp4 ../out/final.mp4
+          fi
+          cd ../.. && ffprobe -v error -show_entries format=duration,size -of default=nw=1 out/final.mp4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-09-final
+          path: |
+            out/final.mp4
+            out/poster.jpg
+            media/captions.ass
+          retention-days: 7

@@ -1,0 +1,24 @@
+name: "05 - Beat Analysis"
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  beats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+      - uses: actions/download-artifact@v4
+        with: { name: stage-02-ingest }
+      - name: Detect beats (source audio)
+        run: |
+          set -e
+          cd scripts/cineforge && python3 beat_detect.py --audio ../../media/audio.wav \
+            --reports ../../reports --src-duration \
+            $(python3 -c "import json;print(json.load(open('../../reports/source_metadata.json'))['duration'])")
+          cd ../.. && python3 -c "import json;b=json.load(open('reports/beats.json'));print('tempo',b['tempo'],'beats',b['beat_count'])"
+      - uses: actions/upload-artifact@v4
+        with: { name: stage-05-beats, path: reports/beats.json }
+        retention-days: 3

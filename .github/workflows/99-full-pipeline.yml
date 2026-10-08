@@ -1,0 +1,84 @@
+name: "99 - Full Pipeline (orchestrator)"
+on:
+  workflow_dispatch:
+    inputs:
+      source_url:
+        description: "Source video URL (empty = safe CC sample)"
+        required: false
+        default: "https://youtu.be/YAFUyPp_238"
+      style:
+        description: "configs/styles.json key"
+        required: false
+        default: "beat_montage"
+      mood:
+        description: "music mood"
+        required: false
+        default: "cinematic"
+      caption_style:
+        description: "caption style (empty = per style)"
+        required: false
+        default: ""
+      target_len:
+        description: "target seconds"
+        required: false
+        default: ""
+      draft:
+        description: "draft render path"
+        required: false
+        default: "false"
+      loader_job_id:
+        description: "loader.to job id to resume"
+        required: false
+        default: ""
+
+permissions: { contents: write }
+
+jobs:
+  stage0:
+    uses: ./.github/workflows/00-environment-check.yml
+  stage1:
+    needs: stage0
+    uses: ./.github/workflows/01-asset-download.yml
+    with:
+      source_url: ${{ inputs.source_url }}
+      music_url: ""
+      mood: ${{ inputs.mood }}
+      loader_job_id: ${{ inputs.loader_job_id }}
+  stage2:
+    needs: stage1
+    uses: ./.github/workflows/02-ingest-proxy.yml
+  stage3:
+    needs: stage2
+    uses: ./.github/workflows/03-audio-analysis.yml
+  stage4:
+    needs: stage2
+    uses: ./.github/workflows/04-transcript.yml
+  stage5:
+    needs: stage2
+    uses: ./.github/workflows/05-beat-analysis.yml
+  stage6:
+    needs: [stage3, stage4, stage5]
+    uses: ./.github/workflows/06-edit-decision.yml
+    with:
+      style: ${{ inputs.style }}
+      target_len: ${{ inputs.target_len }}
+      title: ""
+  stage7:
+    needs: stage6
+    uses: ./.github/workflows/07-audio-mix.yml
+  stage8:
+    needs: stage7
+    uses: ./.github/workflows/08-video-render.yml
+    with:
+      draft: ${{ inputs.draft }}
+  stage9:
+    needs: stage8
+    uses: ./.github/workflows/09-caption-grade.yml
+    with:
+      caption_style: ${{ inputs.caption_style }}
+  stage10:
+    needs: stage9
+    uses: ./.github/workflows/10-quality-control.yml
+  stage11:
+    needs: stage10
+    uses: ./.github/workflows/11-final-delivery.yml

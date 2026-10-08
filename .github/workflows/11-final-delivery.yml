@@ -1,0 +1,68 @@
+name: "11 - Final Delivery"
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions: { contents: write }
+
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+      - uses: actions/download-artifact@v4
+        with: { name: stage-10-qc, path: final }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-04-transcript, path: transcript }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-06-plan, path: plan }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-00-reports, path: reports00 }
+
+      - name: Assemble delivery bundle
+        run: |
+          set -e
+          mkdir -p delivery
+          cp final/out/final.mp4 delivery/cineforge_final.mp4
+          cp final/out/poster.jpg delivery/poster.jpg 2>/dev/null || true
+          cp transcript/reports/subtitles.srt delivery/ 2>/dev/null || true
+          cp transcript/reports/transcript.txt delivery/ 2>/dev/null || true
+          cp plan/reports/edit_plan.json delivery/ 2>/dev/null || true
+          cp reports00/reports/environment.json delivery/ 2>/dev/null || true
+          cp reports/latency.json delivery/ 2>/dev/null || true
+          cp reports/qc_report.json delivery/ 2>/dev/null || true
+          cp reports/media_manifest.json delivery/ 2>/dev/null || true
+          ls -la delivery/
+
+      - uses: actions/upload-artifact@v4
+        with: { name: cineforge-delivery, path: delivery/ }
+        retention-days: 30
+
+      - name: Publish release cineforge-v1
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          gh release view cineforge-v1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create cineforge-v1 --repo "$GITHUB_REPOSITORY" \
+              --title "CineForge Pro — autonomous edit" \
+              --notes "Run ${{ github.run_id }} — final video + SRT + plan + QC + latency" || true
+          gh release upload cineforge-v1 delivery/cineforge_final.mp4 delivery/poster.jpg \
+            --repo "$GITHUB_REPOSITORY" --clobber || true
+          echo "release: https://github.com/$GITHUB_REPOSITORY/releases/tag/cineforge-v1"
+
+      - name: Commit logs
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          set -e
+          mkdir -p logs/cineforge
+          cp reports/latency.json logs/cineforge/latency-run-${{ github.run_id }}.json 2>/dev/null || true
+          cp reports/qc_report.json logs/cineforge/qc-run-${{ github.run_id }}.json 2>/dev/null || true
+          git config user.name "cineforge bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add logs/cineforge || true
+          for i in 1 2 3; do
+            git commit -m "logs(cineforge): run ${{ github.run_id }}" 2>/dev/null && {
+              git push origin HEAD:${{ github.ref_name }} && break; } || break
+            git pull --rebase origin ${{ github.ref_name }} || true
+          done

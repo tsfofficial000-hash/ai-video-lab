@@ -1,0 +1,32 @@
+name: "04 - Transcript (faster-whisper)"
+on:
+  workflow_dispatch:
+    inputs:
+      model: { description: "whisper model", required: false, default: "small" }
+  workflow_call:
+    inputs:
+      model: { type: string, default: "small" }
+
+jobs:
+  transcribe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+      - uses: actions/download-artifact@v4
+        with: { name: stage-02-ingest }
+      - name: Transcribe (int8, VAD, base fallback)
+        run: |
+          set -e
+          cd scripts/cineforge && python3 transcribe.py --audio ../../source.mp4 \
+            --reports ../../reports --model "${{ inputs.model || 'small' }}"
+          cd ../.. && wc -l reports/subtitles.srt && head -6 reports/transcript.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-04-transcript
+          path: |
+            reports/transcript.json
+            reports/transcript.txt
+            reports/subtitles.srt
+          retention-days: 3

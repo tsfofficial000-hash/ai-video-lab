@@ -1,0 +1,36 @@
+name: "07 - Audio Mix"
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  mix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+      - uses: actions/download-artifact@v4
+        with: { name: stage-01-assets }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-06-plan, path: plan }
+      - name: Mix (ducking plan aware)
+        run: |
+          set -e
+          MUSIC=$(python3 -c "import json;p=json.load(open('plan/reports/edit_plan.json'));print(p['audio_ducking_plan'].get('music') or '')")
+          cd scripts/cineforge
+          if [ -n "$MUSIC" ] && [ -f "../../$MUSIC" ]; then
+            python3 audio_mix.py --voice ../../source.mp4 --music "../../$MUSIC" \
+              --out ../../media/mixed_audio.wav --reports ../../reports
+          else
+            python3 audio_mix.py --voice ../../source.mp4 \
+              --out ../../media/mixed_audio.wav --reports ../../reports
+          fi
+          cd ../.. && ffprobe -v error -show_entries format=duration -of csv=p=0 media/mixed_audio.wav
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-07-mix
+          path: |
+            media/mixed_audio.wav
+            reports/audio_mix_report.json
+          retention-days: 3

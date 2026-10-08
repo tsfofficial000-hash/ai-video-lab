@@ -1,0 +1,25 @@
+{
+  "source": "FreePD.com (Creative Commons 0 / public domain dedication)",
+  "verification": "each candidate HEAD-verified at download time; first success wins",
+  "moods": {
+    "sad": ["Heartbreaking.mp3", "Ossuary 5 - Rest.mp3", "Sad Cyclops.mp3"],
+    "emotional": ["Touching Moments.mp3", "Heartbreaking.mp3", "Inspired.mp3"],
+    "cinematic": ["Prelude and Action.mp3", "Curse of the Scarab.mp3", "Take the Lead.mp3"],
+    "dark": ["Ossuary 1 - A Beginning.mp3", "Curse of the Scarab.mp3", "Anguish.mp3"],
+    "motivational": ["Take the Lead.mp3", "Prelude and Action.mp3", "Stand.mp3"],
+    "epic": ["Prelude and Action.mp3", "Take the Lead.mp3", "Curse of the Scarab.mp3"],
+    "lofi": ["City Sunshine.mp3", "Coffee.mp3", "Wakeup.mp3"],
+    "chill": ["City Sunshine.mp3", "Wakeup.mp3", "Life of Riley.mp3"],
+    "study": ["Study and Relax.mp3", "Meditation Impromptu 02.mp3", "City Sunshine.mp3"],
+    "ambient": ["Meditation Impromptu 01.mp3", "Meditation Impromptu 02.mp3", "Ethereal Relaxation.mp3"],
+    "horror": ["Curse of the Scarab.mp3", "Anguish.mp3", "Ossuary 1 - A Beginning.mp3"],
+    "anime": ["Take the Lead.mp3", "Inspired.mp3", "Electrodynamix (not freepd fallback).mp3"],
+    "phonk": ["Take the Lead.mp3", "City Sunshine.mp3", "Stand.mp3"],
+    "dramatic": ["Ossuary 1 - A Beginning.mp3", "Prelude and Action.mp3", "Anguish.mp3"]
+  },
+  "fallback": {
+    "type": "generated_ambient_pad",
+    "description": "if every candidate fails, synthesize a drone pad with ffmpeg (anoisesrc + lowpass + slow tremolo) so the pipeline never hard-fails",
+    "license": "generated, no third-party rights"
+  }
+}

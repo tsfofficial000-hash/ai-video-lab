@@ -1,0 +1,44 @@
+name: "08 - Video Render"
+on:
+  workflow_dispatch:
+    inputs:
+      draft: { description: "draft render (540p-equivalent speed path)", required: false, default: "false" }
+  workflow_call:
+    inputs:
+      draft: { type: string, default: "false" }
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+      - uses: actions/download-artifact@v4
+        with: { name: stage-01-assets }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-06-plan, path: plan }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-07-mix, path: mix }
+      - name: Dry-run gate (2-segment micro render)
+        run: |
+          set -e
+          cd scripts/cineforge && python3 render_ffmpeg.py --source ../../source.mp4 \
+            --timeline ../plan/out/timeline.json --dryrun
+      - name: Full render (segments -> xfade master -> mix mux)
+        run: |
+          set -e
+          cd scripts/cineforge && python3 render_ffmpeg.py --source ../../source.mp4 \
+            --timeline ../plan/out/timeline.json --plan ../plan/reports/edit_plan.json \
+            --mixed ../mix/media/mixed_audio.wav --out ../../out/master.mp4 \
+            ${{ inputs.draft == 'true' && '--draft' || '' }}
+          cd ../.. && ffprobe -v error -show_entries format=duration,size -of default=nw=1 out/master.mp4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-08-render
+          path: |
+            out/master.mp4
+            out/poster.jpg
+            out/filtergraph.txt
+            out/timeline.json
+          retention-days: 3

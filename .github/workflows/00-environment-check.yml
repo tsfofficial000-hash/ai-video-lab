@@ -1,0 +1,27 @@
+name: "00 - Environment Check"
+on:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      ok:
+        value: ${{ jobs.env.outputs.ok }}
+
+permissions: { contents: read }
+
+jobs:
+  env:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    outputs:
+      ok: ${{ steps.check.outputs.ok }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-cf
+      - id: check
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          set -e
+          python3 scripts/cineforge/env_check.py && echo "ok=true" >> "$GITHUB_OUTPUT" || { echo "ok=false" >> "$GITHUB_OUTPUT"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with: { name: stage-00-reports, path: reports/ }
+        retention-days: 3

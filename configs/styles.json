@@ -1,0 +1,67 @@
+{
+  "beat_montage": {
+    "target_range": [25, 75],
+    "cut_style": "beat_grid",
+    "zoom_cycle": [1.0, 1.08, 1.0, 1.13, 1.0, 1.06],
+    "section_flash": "fadewhite",
+    "grade": "cinematic_teal_orange",
+    "captions": null,
+    "pacing": "energetic",
+    "music": "keep_source",
+    "hook": "title_card"
+  },
+  "cinematic": {
+    "target_range": [30, 60],
+    "cut_style": "scene_aligned",
+    "cut_seconds": [2.0, 3.2],
+    "grade": "cinematic_teal_orange",
+    "letterbox": true,
+    "captions": "minimal_clean",
+    "pacing": "smooth",
+    "music": "duck_or_mix",
+    "hook": "title_card"
+  },
+  "motivational": {
+    "target_range": [25, 55],
+    "cut_style": "beat_grid",
+    "cut_seconds": [0.8, 1.6],
+    "grade": "natural",
+    "captions": "viral_high_contrast",
+    "pacing": "fast",
+    "music": "duck_or_mix",
+    "hook": "bold_statement"
+  },
+  "sad_emotional": {
+    "target_range": [30, 60],
+    "cut_style": "scene_aligned",
+    "cut_seconds": [2.6, 4.0],
+    "grade": "sad_cold",
+    "captions": "emotional_soft",
+    "pacing": "slow",
+    "transitions": "soft_fades",
+    "music": "duck_or_mix",
+    "hook": "emotional_line"
+  },
+  "podcast_highlight": {
+    "target_range": [35, 58],
+    "cut_style": "speech_energy",
+    "cut_seconds": [2.0, 5.0],
+    "grade": "natural",
+    "captions": "bold_highlight",
+    "pacing": "speech",
+    "music": "under_bed",
+    "hook": "strongest_sentence",
+    "vertical": "smart_crop_or_blur"
+  },
+  "talking_head_vertical": {
+    "target_range": [30, 58],
+    "cut_style": "speech_energy",
+    "cut_seconds": [1.5, 4.0],
+    "grade": "natural",
+    "captions": "bold_highlight",
+    "pacing": "speech",
+    "music": "none",
+    "hook": "strongest_sentence",
+    "vertical": "smart_crop_or_blur"
+  }
+}

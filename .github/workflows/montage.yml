@@ -1,0 +1,130 @@
+name: "MONTAGE — beat-synced vertical edit (best-workflow pipeline)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      youtube_url:
+        description: "YouTube URL to montage"
+        required: false
+        default: "https://youtu.be/YAFUyPp_238"
+      title:
+        description: "Title overlay (derived from video if empty)"
+        required: false
+        default: ""
+  push:
+    paths:
+      - ".github/workflows/montage.yml"
+      - "scripts/montage/**"
+      - "requirements-montage.txt"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: montage
+  cancel-in-progress: false
+
+jobs:
+  montage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install analysis stack
+        run: |
+          set -e
+          pip install --quiet -r requirements-montage.txt
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libgl1 libglib2.0-0
+          ffmpeg -version | head -1
+
+      - name: Acquire source video (yt-dlp → tunnel → release fallback)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          chmod +x scripts/montage/acquire_source.sh
+          URL="${{ github.event.inputs.youtube_url || 'https://youtu.be/YAFUyPp_238' }}"
+          bash scripts/montage/acquire_source.sh "$URL" source.mp4 source-v1
+          ffprobe -v error -show_entries format=duration,size -of default=nw=1 source.mp4
+
+      - name: Build beat-synced timeline
+        run: |
+          set -e
+          URL="${{ github.event.inputs.youtube_url || 'https://youtu.be/YAFUyPp_238' }}"
+          TITLE="${{ github.event.inputs.title }}"
+          RAW="${TITLE:-$(python3 scripts/montage/get_title.py "$URL")}"
+          echo "title: $RAW"
+          python3 scripts/montage/build_timeline.py \
+            --source source.mp4 --out out/timeline.json --title "$RAW" \
+            --sub "AI VIDEO LAB"
+          python3 -c "import json;print(json.dumps(json.load(open('out/timeline.json'))['meta'],indent=1))"
+
+      - name: Render segments (parallel FFmpeg)
+        run: |
+          set -e
+          python3 scripts/montage/render_segments.py \
+            --source source.mp4 --timeline out/timeline.json \
+            --outdir out/segs --jobs 2
+
+      - name: Assemble master (xfade graph + cards + loudnorm)
+        run: |
+          set -e
+          python3 scripts/montage/assemble.py \
+            --timeline out/timeline.json --segdir out/segs \
+            --out out/montage_final.mp4 --poster out/poster.jpg \
+            --script out/filtergraph.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: montage-final
+          path: |
+            out/montage_final.mp4
+            out/poster.jpg
+            out/timeline.json
+            out/filtergraph.txt
+
+      - name: Publish to release montage-v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG=montage-v1
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "Beat-synced montage — ${{ github.run_id }}" \
+              --notes "Autonomous CI render: librosa beat grid -> FFmpeg xfade graph. Run ${{ github.run_id }}" || true
+          fi
+          gh release upload "$TAG" out/montage_final.mp4 out/poster.jpg --repo "$GITHUB_REPOSITORY" --clobber
+          echo "RELEASE_URL=https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_ENV"
+
+      - name: Commit render log to logs/
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          mkdir -p logs/montage
+          {
+            echo "# montage run ${{ github.run_id }} — $(date -u +%FT%TZ)"
+            echo "- url: ${{ github.event.inputs.youtube_url || 'https://youtu.be/YAFUyPp_238' }}"
+            echo "- timeline meta: $(python3 -c "import json;print(json.load(open('out/timeline.json'))['meta'])")"
+            echo "- final size: $(du -h out/montage_final.mp4 | cut -f1)"
+            echo "- release: https://github.com/$GITHUB_REPOSITORY/releases/tag/montage-v1"
+          } > "logs/montage/run-${{ github.run_id }}.md"
+          cp yt_dlp_errors.log logs/montage/run-${{ github.run_id }}-ytdlp.log 2>/dev/null || true
+          git config user.name "ai-video-lab bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add logs/montage || true
+          for i in 1 2 3; do
+            if git commit -m "logs(montage): run ${{ github.run_id }}" 2>/dev/null; then
+              if git push origin HEAD:${{ github.ref_name }}; then break; fi
+              git pull --rebase origin ${{ github.ref_name }} || true
+            else
+              echo "nothing to commit"; break
+            fi
+          done

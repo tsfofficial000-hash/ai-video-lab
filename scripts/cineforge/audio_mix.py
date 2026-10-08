@@ -75,14 +75,21 @@ def main():
         # voice = sidechain key; music = main input. Numeric options only
         # (the invalid text constant that crashed ffmpeg is gone - see D7).
         fc = (
-            "[0:a]{}anull[voice];"
-            "[1:a]volume=0.9[mmain];"
-            "[mmain][voice]sidechaincompress=threshold=0.02:ratio=8:attack=20:"
-            "release=300:makeup=1.0[ducked];"
-            "[ducked][voice]amix=inputs=2:duration=first,volume=2.0,"
+            "[1:a]volume=0.9[bed];"
+            "[bed][0:a]sidechaincompress=threshold=0.02:ratio=8:attack=20:"
+            "release=300:makeup=1.0[duck];"
+            "[duck][0:a]amix=inputs=2:duration=first,volume=2.0,"
             "loudnorm=I=-16:TP=-1.5:LRA=11,"
             "afade=t=in:d=0.6,volume=1.0[out]"
-        ).format(den)
+        ) if not den else (
+            "[0:a]afftdn=nr=12:nf=-32[vp];"
+            "[1:a]volume=0.9[bed];"
+            "[bed][vp]sidechaincompress=threshold=0.02:ratio=8:attack=20:"
+            "release=300:makeup=1.0[duck];"
+            "[duck][vp]amix=inputs=2:duration=first,volume=2.0,"
+            "loudnorm=I=-16:TP=-1.5:LRA=11,"
+            "afade=t=in:d=0.6,volume=1.0[out]"
+        )
         cmd = ["ffmpeg", "-v", "error", "-y", "-i", a.voice, "-i", a.music,
                "-filter_complex", fc, "-map", "[out]", "-ar", "48000", "-ac", "2", a.out]
         p = subprocess.run(cmd, capture_output=True, text=True)
@@ -99,10 +106,10 @@ def main():
                        check=True, capture_output=True, text=True)
         p2 = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", a.voice, "-i", a.music,
                              "-filter_complex",
-                             "[0:a]{}anull[voice];[1:a]volume=0.9[m];"
-                             "[m][voice]sidechaincompress=threshold=0.02:ratio=8:attack=20:"
-                             "release=300:makeup=1.0[d]".format(den),
-                             "-map", "[d]", "-t", "30", ducked_wav],
+                             "[1:a]volume=0.9[bed];"
+                             "[bed][0:a]sidechaincompress=threshold=0.02:ratio=8:attack=20:"
+                             "release=300:makeup=1.0[duck]",
+                             "-map", "[duck]", "-t", "30", ducked_wav],
                             capture_output=True, text=True)
         if p2.returncode != 0:
             print(f"[mix] diagnostics pass skipped: {(p2.stderr or '')[-300:]}", flush=True)

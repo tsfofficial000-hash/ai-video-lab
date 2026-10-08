@@ -1,0 +1,17 @@
+{
+ "music": {
+  "license": "generated in-pipeline (no third-party rights)",
+  "mood": "cinematic",
+  "title": "generated_ambient_pad.mp3",
+  "url": null,
+  "attribution_required": false,
+  "safe_for_shorts": true,
+  "bytes": 2881036
+ },
+ "source_video": {
+  "url": "source-v1",
+  "duration": 52.208333,
+  "license": "user-provided; verify rights before publishing",
+  "safe_for_shorts": true
+ }
+}

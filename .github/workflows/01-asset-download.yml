@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-cf
 
-      - name: Acquire source (ladder: yt-dlp -> loader tunnel -> release -> safe sample)
+      - name: "Acquire source (ladder: yt-dlp to loader tunnel to release to safe sample)"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LOADER_JOB_ID: ${{ inputs.loader_job_id }}

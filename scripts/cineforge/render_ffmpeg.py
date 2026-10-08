@@ -26,7 +26,7 @@ def main():
     ap.add_argument("--plan", default="reports/edit_plan.json")
     ap.add_argument("--mixed", default=None)
     ap.add_argument("--captions", default=None)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", default="out/final.mp4")
     ap.add_argument("--dryrun", action="store_true", help="render first 4s only")
     ap.add_argument("--draft", action="store_true")
     a = ap.parse_args()

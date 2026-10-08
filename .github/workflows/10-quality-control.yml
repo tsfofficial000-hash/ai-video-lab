@@ -22,10 +22,18 @@ jobs:
           echo "final=$FV plan=$PL"
           cd scripts/cineforge && python3 qc.py --video "../../$FV" \
             --plan "../../$PL" --reports ../../reports
+      - name: Gate aggregation (G1-G10 with numbers)
+        run: |
+          set -e
+          cd scripts/cineforge && python3 gates.py --video ../../out/final.mp4 \
+            --reports ../../reports --style "$(python3 -c "import json;print(json.load(open('../../reports/edit_plan.json')).get('style','beat_montage'))")" || true
+          cd ../.. && cat reports/gates_report.json | head -3 || true
+
       - uses: actions/upload-artifact@v4
         with:
           name: stage-10-qc
           path: |
             reports/qc_report.json
+            reports/gates_report.json
             final/out/final.mp4
           retention-days: 7

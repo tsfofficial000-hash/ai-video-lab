@@ -106,6 +106,79 @@ def download(url, dest, timeout=300):
     return os.path.getsize(dest)
 
 
+def proxify(base, url):
+    """Route raw googlevideo URLs through the instance proxy (add /videoplayback + local=true)."""
+    if not url:
+        return url
+    if "googlevideo.com" in url and "videoplayback" in url:
+        sep = "&" if "?" in url else "?"
+        return f"{base}/videoplayback?{url.split('?', 1)[1]}{sep}local=true"
+    if "local=true" not in url and base not in url and "videoplayback" in url:
+        sep = "&" if "?" in url else "?"
+        return f"{url}{sep}local=true"
+    return url
+
+
+def sh_download(url, dest, tries=3):
+    """curl-based download with retries; returns size; raises on zero-byte."""
+    for k in range(tries):
+        r = subprocess.run(["curl", "-sL", "--max-time", "280", "--retry", "2",
+                            "-H", f"User-Agent: {UA['User-Agent']}", "-o", dest, url],
+                           capture_output=True)
+        size = os.path.getsize(dest) if os.path.isfile(dest) else 0
+        if r.returncode == 0 and size > 65536:
+            return size
+        print(f"  dl attempt {k+1} rc={r.returncode} size={size}", flush=True)
+        time.sleep(2)
+    return size
+
+
+def probe_file(path):
+    try:
+        out = subprocess.check_output(["ffprobe", "-v", "error", "-print_format", "json",
+                                       "-show_streams", path]).decode()
+        d = json.loads(out)
+        return any(s["codec_type"] == "video" for s in d["streams"])
+    except Exception:
+        return False
+
+
+def try_instance(base, res, dest):
+    """Download + mux for one instance; returns (ok, detail)."""
+    tmp_v, tmp_a = "/tmp/_v.f", "/tmp/_a.f"
+    ext = lambda t: (".mp4" if "mp4" in (t or "") else ".webm" if "webm" in (t or "") else ".m4a")
+    for p in (tmp_v + ".mp4", tmp_v + ".webm", tmp_a + ".m4a", tmp_a + ".webm"):
+        if os.path.isfile(p):
+            os.remove(p)
+    if res.get("muxed_url") and not res.get("v_url"):
+        u = proxify(base, res["muxed_url"])
+        sz = sh_download(u, tmp_v + ext(res["v_type"]))
+        if probe_file(tmp_v + ext(res["v_type"])):
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp_v + ext(res["v_type"]),
+                            "-c", "copy", dest], check=True)
+            return True, f"muxed-only {sz/1e6:.1f}MB"
+        return False, f"muxed download invalid ({sz}B)"
+    v_url = proxify(base, res["v_url"])
+    a_url = proxify(base, res["a_url"])
+    szv = sh_download(v_url, tmp_v + ext(res["v_type"]))
+    sza = sh_download(a_url, tmp_a + ext(res["a_type"]))
+    vf = tmp_v + ext(res["v_type"])
+    af = tmp_a + ext(res["a_type"])
+    if not probe_file(vf):
+        # try the muxed fallback before giving up on this instance
+        if res.get("muxed_url"):
+            mu = proxify(base, res["muxed_url"])
+            szm = sh_download(mu, tmp_v + ".mp4")
+            if probe_file(tmp_v + ".mp4"):
+                subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp_v + ".mp4",
+                                "-c", "copy", dest], check=True)
+                return True, f"fallback-muxed {szm/1e6:.1f}MB (adaptive v invalid)"
+        return False, f"v download invalid ({szv}B), a={sza}B"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", vf, "-i", af,
+                    "-c", "copy", dest], check=True)
+    return True, f"adaptive v={szv/1e6:.1f}MB a={sza/1e6:.1f}MB"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("video_id")
@@ -140,23 +213,34 @@ def main():
         print("NO INSTANCE HIT", flush=True)
         sys.exit(1)
 
-    base, res = hit
-    tmp_v, tmp_a = "/tmp/_v.f", "/tmp/_a.f"
-    ext = lambda t: (".mp4" if "mp4" in (t or "") else ".webm" if "webm" in (t or "") else ".m4a")
-    print(f"downloading v({res['v_h']}p) via {base}", flush=True)
-    if res.get("muxed_url") and not res.get("v_url"):
-        download(res["muxed_url"], tmp_v + ext(res["v_type"]))
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp_v + ext(res["v_type"]),
-                        "-c", "copy", "-movflags", "+faststart", a.dest], check=True)
-    else:
-        download(res["v_url"], tmp_v + ext(res["v_type"]))
-        download(res["a_url"], tmp_a + ext(res["a_type"]))
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp_v + ext(res["v_type"]),
-                        "-i", tmp_a + ext(res["a_type"]),
-                        "-c", "copy", "-movflags", "+faststart", a.dest], check=True)
-    dur = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries",
-                                   "format=duration", "-of", "csv=p=0", a.dest]).decode().strip()
-    print(f"OK dur={dur}s via={base}", flush=True)
+    # download loop: hit first, then re-probe remaining instances in diag order
+    candidates = [d["base"] for d in diag]
+    candidates = [hit[0]] + [b for b in candidates if b != hit[0]]
+    for base in candidates:
+        res = hit[1] if base == hit[0] else None
+        if res is None:
+            # re-probe this instance to get fresh signed URLs
+            _, res, err = probe(base, a.video_id, a.min_height)
+            if not res:
+                print(f"skip {base} (re-probe failed: {err})", flush=True)
+                continue
+        print(f"downloading v({res['v_h']}p) via {base}", flush=True)
+        try:
+            ok, detail = try_instance(base, res, a.dest)
+        except subprocess.CalledProcessError as e:
+            ok, detail = False, f"mux failed: {e}"
+        print(("OK " if ok else "fail ") + detail, flush=True)
+        if ok and os.path.isfile(a.dest):
+            dur = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries",
+                                           "format=duration", "-of", "csv=p=0", a.dest]).decode().strip()
+            json.dump({"instances_tried": len(diag), "winner": base, "detail": detail},
+                      open("reports/acquisition_report.json", "w"), indent=1)
+            print(f"OK dur={dur}s via={base}", flush=True)
+            sys.exit(0)
+    json.dump({"instances_tried": len(diag), "winner": None,
+               "diagnostics": diag}, open("reports/acquisition_report.json", "w"), indent=1)
+    print("ALL DOWNLOADS FAILED", flush=True)
+    sys.exit(1)
 
 
 if __name__ == "__main__":

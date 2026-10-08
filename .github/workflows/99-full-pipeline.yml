@@ -33,6 +33,10 @@ on:
 
 permissions: { contents: write }
 
+concurrency:
+  group: cineforge-99-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   stage0:
     uses: ./.github/workflows/00-environment-check.yml

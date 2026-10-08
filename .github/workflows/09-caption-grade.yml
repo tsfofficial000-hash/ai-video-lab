@@ -36,14 +36,21 @@ jobs:
             cd scripts/cineforge
             # empty style = hook-only mode in captions.py (no caption cues burned)
             python3 captions.py --transcript "../../$TR" \
-              --plan "../../$MP" --style "$CS" --out ../media/captions.ass \
+              --plan "../../$MP" --style "$CS" \
+              --out "$GITHUB_WORKSPACE/media/captions.ass" \
               --source "../../source.mp4" || true
             cd ../..
-            if [ -f media/captions.ass ] && grep -q "Dialogue" media/captions.ass; then
-              ffmpeg -v error -y -i "$MV" -vf "ass=media/captions.ass:fontsdir=media/fonts" \
+            ASS="$GITHUB_WORKSPACE/media/captions.ass"
+            FDIR="$GITHUB_WORKSPACE/media/fonts"
+            if [ -f "$ASS" ] && grep -q "Dialogue" "$ASS"; then
+              echo "burning hook/captions from $ASS"
+              ffmpeg -v error -y -i "$MV" -vf "ass=$ASS:fontsdir=$FDIR" \
                 -c:v libx264 -preset medium -crf 19 -pix_fmt yuv420p -c:a copy \
                 -movflags +faststart out/final.mp4
+              echo "burn done: $(ffprobe -v error -show_entries format=size -of csv=p=0 out/final.mp4) bytes"
             else
+              echo "WARNING: captions.ass missing or empty - shipping unburnt master"
+              ls -la media/ scripts/cineforge/../media 2>/dev/null || true
               cp "$MV" out/final.mp4
             fi
           else

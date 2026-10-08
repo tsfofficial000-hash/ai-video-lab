@@ -26,19 +26,30 @@ runs:
           sleep 5
         done
         [ "$ok" = "1" ] || { echo "pip install failed after 3 attempts"; exit 1; }
-        # ffmpeg ships preinstalled on ubuntu-latest runners (6.1.1) - apt only as fallback
+        # ffmpeg: preinstalled on some runner images; apt is flaky from Azure, so
+        # fall back to a static build before giving up
         if command -v ffmpeg >/dev/null 2>&1; then
           echo "ffmpeg preinstalled: $(ffmpeg -version | head -1)"
         else
-          for i in 1 2; do
-            if timeout 300 sudo apt-get update -qq && \
-               timeout 300 sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libgl1 libglib2.0-0; then
+          for i in 1 2 3; do
+            if timeout 420 sudo apt-get update -qq && \
+               timeout 420 sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libgl1 libglib2.0-0; then
               break
             fi
             echo "apt attempt $i failed - retrying"
             sleep 5
           done
         fi
+        if ! command -v ffmpeg >/dev/null 2>&1; then
+          echo "apt failed - installing static ffmpeg+ffprobe"
+          curl -sSL --max-time 240 -o /tmp/ff.tar.xz \
+            https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+            && sudo tar xJf /tmp/ff.tar.xz --strip-components=1 -C /usr/local/bin \
+               --wildcards '*/ffmpeg' '*/ffprobe' \
+            && sudo ln -sf /usr/local/bin/ffmpeg /usr/bin/ffmpeg \
+            && sudo ln -sf /usr/local/bin/ffprobe /usr/bin/ffprobe
+        fi
+        command -v ffmpeg >/dev/null 2>&1 || { echo "no ffmpeg available"; exit 1; }
         # best-effort extras (mediapipe/opencv support); never fatal
         timeout 120 sudo apt-get install -y -qq libgl1 libglib2.0-0 fonts-dejavu-core || true
         ffmpeg -version | head -1

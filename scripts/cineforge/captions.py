@@ -3,6 +3,8 @@
 import argparse
 import re
 
+REPO_ROOT = __import__("os").path.abspath(
+    __import__("os").path.join(__file__, "..", ".."))
 from utils import jdump, jload, record_stage
 import time
 
@@ -53,7 +55,7 @@ def main():
     t0 = time.time()
     tr = jload(a.transcript, {})
     plan = jload(a.plan, {})
-    styles = jload("configs/caption_styles.json", {})
+    styles = jload(REPO_ROOT + "/configs/caption_styles.json", {})
     st = styles.get(a.style or "", styles["minimal_clean"])
     if not st:
         raise SystemExit("caption style disabled in plan")

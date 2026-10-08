@@ -4,6 +4,8 @@ Style-aware: hook selection, beat/scene aligned cuts, pacing per mood, ducking p
 import argparse
 import json
 
+REPO_ROOT = __import__("os").path.abspath(
+    __import__("os").path.join(__file__, "..", ".."))
 from utils import jdump, jload, record_stage
 import time
 
@@ -107,7 +109,7 @@ def main():
     a = ap.parse_args()
 
     t0 = time.time()
-    styles = jload("configs/styles.json", {})
+    styles = jload(REPO_ROOT + "/configs/styles.json", {})
     style_cfg = styles.get(a.style, styles["beat_montage"])
     meta = jload(f"{a.reports}/source_metadata.json")
     beats = jload(f"{a.reports}/beats.json", {})
@@ -148,7 +150,7 @@ def main():
             "music": "media/music.mp3" if style_cfg.get("music") in ("duck_or_mix", "under_bed") else None,
             "duck_to_db": -14,
         },
-        "fallback_plan": jload("configs/fallbacks.json", {}).get("rules", []),
+        "fallback_plan": jload(REPO_ROOT + "/configs/fallbacks.json", {}).get("rules", []),
         "vertical_plan": style_cfg.get("vertical", "blurred_bg_fill"),
         "letterbox": style_cfg.get("letterbox", False),
         "title_main": (a.title or "MONTAGE").upper()[:38],

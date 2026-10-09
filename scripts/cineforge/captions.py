@@ -207,6 +207,7 @@ def main():
                 size = max(150, int(size * 0.92))
                 if size <= 150:
                     # final attempt at the floor: a 2-line wrap wins over 3
+                    maxc = max(4, int(max_w / (0.44 * 150)))
                     lines, cur = [], ""
                     for wd in txt.split():
                         cand = (cur + " " + wd).strip()

@@ -2,8 +2,8 @@
  "stages": [
   {
    "stage_name": "09a-captions",
-   "start_time": "2026-10-09T04:58:39+00:00",
-   "end_time": "2026-10-09T04:58:39+00:00",
+   "start_time": "2026-10-09T05:21:31+00:00",
+   "end_time": "2026-10-09T05:21:31+00:00",
    "duration_seconds": 0.0,
    "status": "success",
    "runner_os": "local",
@@ -17,5 +17,5 @@
    "optimization_result": ""
   }
  ],
- "updated_at": "2026-10-09T04:58:39+00:00"
+ "updated_at": "2026-10-09T05:21:31+00:00"
 }

@@ -132,8 +132,11 @@ jobs:
           [ -f "$TR" ] || echo '{"transcript_empty": true}' > "$TR"
           CS=$(python3 -c "import json;p=json.load(open('$MP'));print(p.get('caption_style') or '')")
           cd scripts/cineforge
-          python3 captions.py --transcript "../$TR" --plan "../$MP" --style "$CS" \
-            --out ../media/captions.ass --source ../../source.mp4 || true
+          # cwd is scripts/cineforge -> repo root is ../../ (the old ../$
+          # resolved into scripts/reports/ which never exists: drafts silently
+          # shipped unburnt video)
+          python3 captions.py --transcript "../../$TR" --plan "../../$MP" --style "$CS" \
+            --out ../../media/captions.ass --source ../../source.mp4 || true
           cd ../..
           if [ -f media/captions.ass ] && grep -q "Dialogue" media/captions.ass; then
             ffmpeg -v error -y -i out/master.mp4 -vf "ass=media/captions.ass:fontsdir=media/fonts" \

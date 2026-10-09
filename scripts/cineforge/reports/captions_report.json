@@ -1,8 +1,9 @@
 {
  "style": "bold_highlight",
- "events": 2,
+ "events": 3,
  "cues": [
-  16.95
+  16.45,
+  17.33
  ],
  "font_caption": "Montserrat",
  "font_hook": "Anton",
@@ -27,7 +28,16 @@
    "face": null
   },
   {
-   "cue": 16.95,
+   "cue": 16.45,
+   "element": "caption",
+   "placement": "marginV=291",
+   "lines": 2,
+   "keyword": "searching",
+   "face": null,
+   "reason": "bottom_safe_zone"
+  },
+  {
+   "cue": 17.33,
    "element": "caption",
    "placement": "marginV=291",
    "lines": 2,

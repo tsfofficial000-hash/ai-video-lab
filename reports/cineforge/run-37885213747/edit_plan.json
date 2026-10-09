@@ -1,0 +1,405 @@
+{
+ "style": "beat_montage",
+ "mood": "cinematic",
+ "target_duration": 17.8,
+ "aspect_ratio": "9:16",
+ "fps": 30,
+ "resolution": "1080x1920",
+ "hook": {
+  "type": "title_card",
+  "text": "What brings you to the land of the gatekeepers?",
+  "seconds": [
+   0,
+   3.0
+  ]
+ },
+ "segments": [
+  {
+   "i": 0,
+   "src_start": 19.11,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 1,
+   "src_start": 19.574,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.08,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 2,
+   "src_start": 22.57,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 3,
+   "src_start": 23.406,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.13,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 4,
+   "src_start": 24.288,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 5,
+   "src_start": 25.147,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.06,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 6,
+   "src_start": 26.006,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 7,
+   "src_start": 28.653,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.08,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 8,
+   "src_start": 29.513,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 9,
+   "src_start": 30.0,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.13,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 10,
+   "src_start": 30.465,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 11,
+   "src_start": 32.601,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.06,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 12,
+   "src_start": 33.483,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 13,
+   "src_start": 34.366,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.08,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 14,
+   "src_start": 35.248,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 15,
+   "src_start": 35.712,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.13,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 16,
+   "src_start": 36.595,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 17,
+   "src_start": 37.059,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.06,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 18,
+   "src_start": 37.547,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 19,
+   "src_start": 38.336,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.08,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 20,
+   "src_start": 39.195,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 21,
+   "src_start": 39.66,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.13,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.18
+   }
+  },
+  {
+   "i": 22,
+   "src_start": 40.124,
+   "out_dur": 0.946,
+   "speed": 0.772,
+   "zoom": 1.0,
+   "src_dur": 0.73,
+   "transition_after": {
+    "type": "none",
+    "dur": 0.0
+   }
+  }
+ ],
+ "cut_points": [
+  19.11,
+  19.574,
+  22.57,
+  23.406,
+  24.288,
+  25.147,
+  26.006,
+  28.653,
+  29.513,
+  30.0,
+  30.465,
+  32.601,
+  33.483,
+  34.366,
+  35.248,
+  35.712,
+  36.595,
+  37.059,
+  37.547,
+  38.336,
+  39.195,
+  39.66,
+  40.124
+ ],
+ "cut_density_cps": 1.29,
+ "cuts_band": [
+  1.2,
+  2.0
+ ],
+ "beat_alignment_ms": 0.0,
+ "sfx_events": [
+  {
+   "t": 0.0,
+   "kind": "impact"
+  }
+ ],
+ "transition_types": [
+  "fade"
+ ],
+ "music_cut_alignment": "beat_grid",
+ "caption_style": "bold_highlight",
+ "color_grade": "cinematic_teal_orange",
+ "b_roll_suggestions": [],
+ "sfx_suggestions": [
+  "whoosh_on_section_flash",
+  "impact_on_hook"
+ ],
+ "audio_ducking_plan": {
+  "mode": "sidechain_duck",
+  "music": "media/music.mp3",
+  "duck_to_db": -14
+ },
+ "fallback_plan": [
+  {
+   "condition": "rembg_missing_or_slow",
+   "action": "skip text-behind-subject, use normal title overlay",
+   "cost_note": "rembg on 4-core/16GB runner ~20-60s/frame-range; only first 3s would qualify"
+  },
+  {
+   "condition": "mediapipe_missing_or_slow",
+   "action": "center crop 9:16, static; else blurred-background fill",
+   "cost_note": "MediaPipe face detection ~15fps analysis on runner; acceptable but not required"
+  },
+  {
+   "condition": "demucs_missing_or_slow",
+   "action": "FFmpeg sidechaincompress ducking + afftdn noise reduction",
+   "cost_note": "Demucs CPU separation of a 3-min track ~6-10 min on runner; not worth latency"
+  },
+  {
+   "condition": "transcription_too_slow",
+   "action": "draft: faster-whisper base int8; final: small int8; skip captions if still >8min",
+   "cost_note": "small int8 ~4.2x realtime measured in prior runs (whisper-asr.yml evidence)"
+  },
+  {
+   "condition": "render_too_slow",
+   "action": "draft at 540x960 preset veryfast crf 23; final at 1080x1920 preset medium crf 19",
+   "cost_note": "draft is ~4x faster end-to-end"
+  },
+  {
+   "condition": "download_fails",
+   "action": "acquisition ladder: yt-dlp multi-client -> loader.to tunnel -> release asset -> safe sample",
+   "cost_note": "see acquire_source.sh; every failure mode logged"
+  },
+  {
+   "condition": "music_download_fails",
+   "action": "generate ambient pad with ffmpeg (see music_moods.json fallback)",
+   "cost_note": "instant, zero network"
+  },
+  {
+   "condition": "no_beats_detected",
+   "action": "uniform 1.35s cut grid; scene-change alignment preferred",
+   "cost_note": "graceful, proven in synthetic dry-run"
+  },
+  {
+   "condition": "fonts_fetch_fails",
+   "action": "fallback to DejaVu Sans Bold for captions/hook (record license note), never fail the run",
+   "cost_note": "DejaVu is preinstalled on ubuntu runners; zero latency"
+  },
+  {
+   "condition": "mediapipe_unavailable",
+   "action": "smart_crop degrades to center cover_crop; decision logged per cue",
+   "cost_note": "face-avoidance is best-effort; captions still land in safe zone"
+  }
+ ],
+ "vertical_plan": "cover_crop",
+ "letterbox": false,
+ "title_main": "MONTAGE",
+ "title_sub": "AI VIDEO LAB",
+ "dead_air_removed": false,
+ "source_duration": 52.21
+}

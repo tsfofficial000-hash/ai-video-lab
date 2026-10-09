@@ -1,0 +1,83 @@
+{
+ "status": "pass",
+ "final_path": "../../final/out/final.mp4",
+ "checks": [
+  {
+   "check": "file_exists",
+   "passed": true,
+   "detail": "10.5MB"
+  },
+  {
+   "check": "probe_ok",
+   "passed": true,
+   "detail": ""
+  },
+  {
+   "check": "duration_in_range",
+   "passed": true,
+   "detail": "17.50s vs target 17.8s"
+  },
+  {
+   "check": "resolution_correct",
+   "passed": true,
+   "detail": "1080x1920"
+  },
+  {
+   "check": "fps_correct",
+   "passed": true,
+   "detail": "30/1"
+  },
+  {
+   "check": "audio_exists",
+   "passed": true,
+   "detail": ""
+  },
+  {
+   "check": "loudness_reasonable",
+   "passed": true,
+   "detail": "input_i=-16.04dB"
+  },
+  {
+   "check": "black_budget_g1",
+   "passed": true,
+   "detail": "0 regions, total 0.00s (0.0%), longest 0.00s (final fadeblack exempt <=0.5s)"
+  },
+  {
+   "check": "luma_profile_g2",
+   "passed": true,
+   "detail": "median=95 near-black=0.0% blown=0 first1sY=51"
+  },
+  {
+   "check": "not_silent_tail",
+   "passed": true,
+   "detail": "intentional fade excluded (2s threshold)"
+  },
+  {
+   "check": "size_reasonable",
+   "passed": true,
+   "detail": "10.5MB < 220MB"
+  },
+  {
+   "check": "captions_burned",
+   "passed": true,
+   "detail": "white-pixel ratio at cues: 0.5s=2.552%, 1.24s=2.613% (2/3 cues show burned text)"
+  }
+ ],
+ "repairs": [],
+ "probe": {
+  "duration": 17.5,
+  "size": 10451777,
+  "loudnorm": {
+   "input_i": "-16.04",
+   "input_tp": "-1.80",
+   "input_lra": "5.50",
+   "input_thresh": "-26.48",
+   "output_i": "-16.35",
+   "output_tp": "-1.50",
+   "output_lra": "4.90",
+   "output_thresh": "-26.81",
+   "normalization_type": "dynamic",
+   "target_offset": "0.35"
+  }
+ }
+}

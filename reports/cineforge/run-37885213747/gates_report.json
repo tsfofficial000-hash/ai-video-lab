@@ -1,0 +1,54 @@
+{
+ "G1_black": {
+  "green": true,
+  "value": "black=0.00s (0.0% of 17.5s) +tail 0.00s, no regions",
+  "artifact": "blackdetect scan of final.mp4"
+ },
+ "G2_luma": {
+  "green": true,
+  "value": "medianY=95 nearBlack=0.0% blown=0 first1sY=45 n=35",
+  "artifact": "signalstats 2fps scan"
+ },
+ "G3_selection": {
+  "green": true,
+  "value": "wrap=False overlaps=0 droppedLuma=52 selected=23",
+  "artifact": "../../plan/reports/selection_audit.json"
+ },
+ "G4_layout": {
+  "green": true,
+  "value": "vertical=cover_crop fg=full-bleed",
+  "artifact": "edit_plan.json vertical_plan"
+ },
+ "G5_typography": {
+  "green": true,
+  "value": "fonts_ok=True lic=True pixelTest=True cuesLogged=True style=bold_highlight",
+  "artifact": "../../reports00/fonts_report.json + ../../final/reports/captions_report.json"
+ },
+ "G6_audio": {
+  "green": true,
+  "value": "mode=sidechain_duck duck=13.04dB music=True outI=-16.3",
+  "artifact": "../../mix/reports/audio_mix_report.json"
+ },
+ "G7_pacing": {
+  "green": true,
+  "value": "cuts/s=1.29 band=[1.2, 2.0] alignMs=0.0",
+  "artifact": "../../delivery/edit_plan.json"
+ },
+ "G8_evidence": {
+  "green": true,
+  "value": "reports present: 3/3",
+  "artifact": "cineforge-delivery bundle (stage-11)"
+ },
+ "G9_latency": {
+  "green": true,
+  "value": "wall=383s (<=720) maxSetup=23s (<=45)",
+  "artifact": "../../delivery/latency.json"
+ },
+ "G10_free": {
+  "green": true,
+  "value": "2 assets: music=generated in-pipeline (no third-party rights); source_video=Blender Foundation CC-BY 4.0 (Sintel trailer, durian.blender.org; via source-v1 cache; attribution: (c) Blender Foundation | durian.blender.org)",
+  "artifact": "../../delivery/media_manifest.json"
+ },
+ "ALL_GREEN": true,
+ "PENDING": []
+}

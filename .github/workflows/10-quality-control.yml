@@ -23,6 +23,10 @@ jobs:
           set -e
           FV=$(python3 -c "import glob;c=glob.glob('final/**/final.mp4',recursive=True);print(c[0]);assert c")
           PL=$(python3 -c "import glob;c=glob.glob('plan/**/edit_plan.json',recursive=True)+glob.glob('reports/edit_plan.json');print(c[0]);assert c")
+          # captions_report.json rides in the stage-09 artifact; qc.py reads it
+          # from repo-root reports/ (D6 pixel test cue source)
+          CR=$(python3 -c "import glob;c=glob.glob('final/**/captions_report.json',recursive=True);print(c[0] if c else '')")
+          [ -n "$CR" ] && cp "$CR" reports/captions_report.json || echo "WARN: captions_report.json not in stage-09 artifact"
           echo "final=$FV plan=$PL"
           cd scripts/cineforge && python3 qc.py --video "../../$FV" \
             --plan "../../$PL" --reports ../../reports

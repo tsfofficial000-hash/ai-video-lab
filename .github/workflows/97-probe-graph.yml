@@ -1,4 +1,4 @@
-name: "97 - Probe: filtergraph bisection on runner ffmpeg"
+name: "97 - Probe: verbatim graph repro + in-situ bisection"
 on:
   workflow_dispatch:
     inputs:
@@ -16,67 +16,65 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-cf
-      - name: ffmpeg identity
-        run: |
-          which ffmpeg
-          ffmpeg -version | head -3
-      - name: Build 2 real-style segments
+      - name: Reproduce stage-8 environment exactly
         run: |
           set -e
-          mkdir -p segs
+          mkdir -p segs txt
+          F=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
           for i in 0 1; do
             ffmpeg -v error -y -f lavfi -i "testsrc2=size=1280x720:rate=30:duration=1.5" \
-              -vf "settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p" \
-              -c:v libx264 -preset ultrafast -crf 28 \
-              -f lavfi -i "sine=frequency=330:duration=1.5" -c:a aac -shortest segs/real_00$i.mp4 || true
+              -f lavfi -i "sine=frequency=330:duration=1.5" \
+              -c:v libx264 -preset ultrafast -crf 28 -c:a aac -shortest segs/real_00$i.mp4
           done
-          ls -la segs/
-      - name: Bisection matrix (each filter alone, then chains)
-        run: |
-          set -e
-          F=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
-          mkdir -p txt && echo "END CARD" > txt/end1.txt && echo "sub" > txt/end2.txt
-
-          dt="drawtext=fontfile=$F:textfile=txt/end1.txt:fontsize=56:fontcolor=white:borderw=3:bordercolor=black@0.55:x=(w-text_w)/2:y=h*0.44:alpha='if(lt(t,-1.58),0,if(lt(t,-1.08),(t--1.58)/0.5,1))':enable='gte(t,-1.58)'"
-          dt_plain="drawtext=fontfile=$F:textfile=txt/end1.txt:fontsize=56"
-          dt_esc="drawtext=fontfile=$F\\:textfile=txt/end1.txt\\:fontsize=56"
-
-          declare -A GRAPHS
-          GRAPHS[trivial]="null=out"
-          GRAPHS[settb]="[0:v]settb=AVTB,setpts=PTS-STARTPTS[v]"
-          GRAPHS[xfade]="[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30[v0];[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30[v1];[v0][v1]xfade=transition=fade:duration=0.18:offset=0.42[v]"
-          GRAPHS[drawtext_plain]="[0:v]$dt_plain[v]"
-          GRAPHS[drawtext_full]="[0:v]$dt[v]"
-          GRAPHS[acrossfade]="[0:a]atrim=duration=0.6,asetpts=PTS-STARTPTS[a0];[1:a]atrim=duration=0.6,asetpts=PTS-STARTPTS[a1];[a0][a1]acrossfade=d=0.18[a]"
-          GRAPHS[loudnorm]="[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[a]"
-          GRAPHS[full]="[0:v:0]settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v0];[1:v:0]settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v1];[v0][v1]xfade=transition=fade:duration=0.180:offset=0.420[x1];[0:a:0]atrim=duration=0.600,asetpts=PTS-STARTPTS[a0];[1:a:0]atrim=duration=0.600,asetpts=PTS-STARTPTS[a1];[a0][a1]acrossfade=d=0.180:c1=tri:c2=tri[xa1];[x1]fade=t=in:st=0:d=0.45,fade=t=out:st=0.320:d=0.7[vout];[xa1]loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=out:st=0.120:d=0.9[aout]"
-
-          for name in trivial settb xfade drawtext_plain drawtext_full acrossfade loudnorm full; do
-            g="${GRAPHS[$name]}"
-            echo "=== variant: $name ==="
-            if [[ "$name" == acrossfade || "$name" == loudnorm ]]; then
-              ffmpeg -hide_banner -loglevel error -y -i segs/real_0000.mp4 -i segs/real_0001.mp4 \
-                -filter_complex "$g" -map "[a]" -f null - 2>&1 | tail -2
-            else
-              ffmpeg -hide_banner -loglevel error -y -i segs/real_0000.mp4 -i segs/real_0001.mp4 \
-                -filter_complex "$g" -map "[v]" -f null - 2>&1 | tail -2
-            fi
-            echo "rc=$? ($name)"
-          done
-      - name: Echo test (does the shell mangle the graph?)
-        run: |
-          G='[0:v]settb=AVTB,setpts=PTS-STARTPTS[v]'
-          echo "simple quoted graph passthrough: $G"
-          ffmpeg -hide_banner -loglevel error -y -f lavfi -i "testsrc2=size=320x240:rate=30:duration=0.5" \
-            -filter_complex "[0:v]null[v]" -map "[v]" -f null - && echo "INLINE LAVFI OK rc=$?"
-          echo '{"t":1}' > /tmp/x.json
+          echo "END CARD" > txt/end1.txt
+          echo "sub" > txt/end2.txt
           python3 - <<'PY'
-          import subprocess
-          # exact same argv construction as assemble.py
-          cmd = ["ffmpeg","-hide_banner","-loglevel","error","-y",
-                 "-f","lavfi","-i","testsrc2=size=320x240:rate=30:duration=0.5",
-                 "-filter_complex","[0:v]settb=AVTB,setpts=PTS-STARTPTS[v]",
-                 "-map","[v]","-f","null","-"]
-          p = subprocess.run(cmd, capture_output=True, text=True)
-          print("python-subprocess rc:", p.returncode, (p.stderr or "")[-300:])
+          import subprocess, os, shutil
+          print("which ffmpeg:", shutil.which("ffmpeg"))
+          print(subprocess.run(["ffmpeg","-version"],capture_output=True,text=True).stdout.splitlines()[0])
+          # VERBATIM failing graph from run 37875877209 stage-8
+          base = os.getcwd()
+          tf1 = f"{base}/txt/end1.txt"
+          tf2 = f"{base}/txt/end2.txt"
+          F = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+          dt1 = (f"drawtext=fontfile={F}:textfile={tf1}:fontsize=56:fontcolor=white:"
+                 f"borderw=3:bordercolor=black@0.55:x=(w-text_w)/2:y=h*0.44:"
+                 f"alpha='if(lt(t,-1.58),0,if(lt(t,-1.08),(t--1.58)/0.5,1))':enable='gte(t,-1.58)'")
+          dt2 = (f"drawtext=fontfile={F}:textfile={tf2}:fontsize=28:fontcolor=white@0.85:"
+                 f"borderw=2:bordercolor=black@0.5:x=(w-text_w)/2:y=h*0.44+56+24:"
+                 f"alpha='if(lt(t,-1.38),0,if(lt(t,-0.88),(t--1.38)/0.5,1))':enable='gte(t,-1.38)'")
+          vpre = "[0:v:0]settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v0];[1:v:0]settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v1]"
+          xf = "[v0][v1]xfade=transition=fade:duration=0.180:offset=0.420[x1]"
+          apre = "[0:a:0]atrim=duration=0.600,asetpts=PTS-STARTPTS[a0];[1:a:0]atrim=duration=0.600,asetpts=PTS-STARTPTS[a1]"
+          af = "[a0][a1]acrossfade=d=0.180:c1=tri:c2=tri[xa1]"
+          fades = "fade=t=in:st=0:d=0.45,fade=t=out:st=0.320:d=0.7"
+          aout = "loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=out:st=0.120:d=0.9"
+          variants = {
+            "verbatim":        ";".join([vpre, xf, apre, af, f"[x1]{dt1},{dt2},{fades}[vout]", f"[xa1]{aout}[aout]"]),
+            "no_drawtext":     ";".join([vpre, xf, apre, af, f"[x1]{fades}[vout]", f"[xa1]{aout}[aout]"]),
+            "dt1_only":        ";".join([vpre, xf, apre, af, f"[x1]{dt1},{fades}[vout]", f"[xa1]{aout}[aout]"]),
+            "dt2_only":        ";".join([vpre, xf, apre, af, f"[x1]{dt2},{fades}[vout]", f"[xa1]{aout}[aout]"]),
+            "dt_rel_path":     ";".join([vpre, xf, apre, af, "[x1]" + dt1.replace(tf1, "txt/end1.txt") + f",{fades}[vout]", f"[xa1]{aout}[aout]"]),
+            "dt_alpha_only":   ";".join([vpre, xf, apre, af, "[x1]" + dt1.split(":alpha")[0] + f",{fades}[vout]", f"[xa1]{aout}[aout]"]),
+          }
+          for name, g in variants.items():
+            cmd = ["ffmpeg","-hide_banner","-loglevel","error","-y",
+                   "-i","segs/real_0000.mp4","-i","segs/real_0001.mp4",
+                   "-filter_complex", g, "-map","[vout]","-map","[aout]",
+                   "-f","null","-"]
+            p = subprocess.run(cmd, capture_output=True, text=True)
+            tail = (p.stderr or "").strip().splitlines()[-1:] if p.stderr else []
+            print(f"{name:14s} rc={p.returncode} {'| '+tail[0][:120] if tail and p.returncode else ''}")
+            if p.returncode != 0:
+                # bisect: which filter name is unknown?
+                import re
+                m = re.search(r"[Nn]o such filter: '([^']+)'", p.stderr or "")
+                print("   unknown filter:", m.group(1) if m else "n/a")
+          # also test -filter_complex_script form with the verbatim graph
+          open("graph.txt","w").write(variants["verbatim"])
+          p = subprocess.run(["ffmpeg","-hide_banner","-loglevel","error","-y",
+                              "-i","segs/real_0000.mp4","-i","segs/real_0001.mp4",
+                              "-filter_complex_script","graph.txt","-map","[vout]","-map","[aout]","-f","null","-"],
+                             capture_output=True, text=True)
+          print("script-form rc:", p.returncode, (p.stderr or "")[-200:])
           PY

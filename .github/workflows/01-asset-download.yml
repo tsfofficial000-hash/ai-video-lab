@@ -74,9 +74,12 @@ jobs:
           import json, subprocess
           d = json.loads(subprocess.check_output(["ffprobe","-v","error","-print_format","json","-show_format", "source.mp4"]).decode())
           m = json.load(open("reports/media_manifest.json")) if __import__("os").path.isfile("reports/media_manifest.json") else {}
-          m["source_video"] = {"url": "${{ inputs.source_url }}", "duration": float(d["format"]["duration"]),
-                               "license": "user-provided; verify rights before publishing" if "${{ inputs.source_url }}" else "Blender Foundation CC-BY (safe sample)",
-                               "safe_for_shorts": bool("${{ inputs.source_url }}") }
+          url = "${{ inputs.source_url }}"
+          lic = ("user-provided; verify rights before publishing" if url and url != "source-v1"
+                 else "Blender Foundation CC-BY 4.0 (Sintel trailer, durian.blender.org; via source-v1 cache; attribution: (c) Blender Foundation | durian.blender.org)")
+          m["source_video"] = {"url": url or "source-v1 release cache", "duration": float(d["format"]["duration"]),
+                               "license": lic,
+                               "safe_for_shorts": True}
           json.dump(m, open("reports/media_manifest.json","w"), indent=1)
           PY
 

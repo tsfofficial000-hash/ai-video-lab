@@ -161,7 +161,7 @@ jobs:
             --reports ../../delivery --search "../../delivery:../../plan:../../final:../../assets01:../../reports00" \
             --latency ../../delivery/latency.json || true
           cd ../.. && cp delivery/gates_report.json reports/gates_report.json 2>/dev/null || true
-          python3 -c "import json;g=json.load(open('delivery/gates_report.json'));print('FINAL GATES ALL_GREEN:',g['ALL_GREEN'],'pending:',g.get('PENDING'));[print(' ',k,v['green'],v['value'][:110]) for k,v in g.items() if k.startswith('G')]"
+          python3 -c "import json;g=json.load(open('delivery/gates_report.json'));print('FINAL GATES ALL_GREEN:',g['ALL_GREEN'],'pending:',g.get('PENDING'));[print(' ',k,v['green'],v['value'][:110]) for k,v in g.items() if k.startswith('G')];red=[k for k,v in g.items() if k.startswith('G') and v.get('green') is False];assert not red and not g.get('PENDING'), 'gates NOT green at delivery: '+str({k:g[k]['value'] for k in red+list(g.get('PENDING') or [])})"
 
       - uses: actions/upload-artifact@v4
         with: { name: cineforge-delivery, path: delivery/, retention-days: 30 }

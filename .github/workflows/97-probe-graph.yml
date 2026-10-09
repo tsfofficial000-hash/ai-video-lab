@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: "run id whose graph to test (informational)"
+        description: "informational"
         required: false
         default: ""
 
@@ -12,59 +12,71 @@ permissions: { contents: read }
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-      - name: ffmpeg version
-        run: ffmpeg -version | head -1
-      - name: Build 2 lavfi segments (same settb/scale/fps chain as render_segments)
+      - uses: ./.github/actions/setup-cf
+      - name: ffmpeg identity
+        run: |
+          which ffmpeg
+          ffmpeg -version | head -3
+      - name: Build 2 real-style segments
         run: |
           set -e
           mkdir -p segs
           for i in 0 1; do
             ffmpeg -v error -y -f lavfi -i "testsrc2=size=1280x720:rate=30:duration=1.5" \
               -vf "settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p" \
-              -c:v libx264 -preset ultrafast -crf 28 -an segs/seg_00$i.mp4
+              -c:v libx264 -preset ultrafast -crf 28 \
+              -f lavfi -i "sine=frequency=330:duration=1.5" -c:a aac -shortest segs/real_00$i.mp4 || true
           done
-          ffmpeg -v error -y -f lavfi -i "sine=frequency=440:duration=1.5" -c:a aac segs/seg_0000.m4a || true
-          # re-mux with audio to mirror real segs (video+aac)
-          for i in 0 1; do
-            ffmpeg -v error -y -i segs/seg_00$i.mp4 -f lavfi -i "sine=frequency=330:duration=1.5" \
-              -c:v copy -c:a aac -shortest segs/real_00$i.mp4
-          done
-      - name: Bisection matrix
+          ls -la segs/
+      - name: Bisection matrix (each filter alone, then chains)
         run: |
           set -e
           F=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
           mkdir -p txt && echo "END CARD" > txt/end1.txt && echo "sub" > txt/end2.txt
 
-          base_v='[0:v:0]settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v0];[1:v:0]settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v1];[v0][v1]xfade=transition=fade:duration=0.180:offset=1.087[x1]'
-          base_a='[0:a:0]atrim=duration=1.267,asetpts=PTS-STARTPTS[a0];[1:a:0]atrim=duration=0.567,asetpts=PTS-STARTPTS[a1];[a0][a1]acrossfade=d=0.180:c1=tri:c2=tri[xa1]'
-          dt1="drawtext=fontfile=$F:textfile=txt/end1.txt:fontsize=56:fontcolor=white:borderw=3:bordercolor=black@0.55:x=(w-text_w)/2:y=h*0.44:alpha='if(lt(t,-0.95),0,if(lt(t,-0.45),(t--0.95)/0.5,1))':enable='gte(t,-0.95)'"
-          dt2="drawtext=fontfile=$F:textfile=txt/end2.txt:fontsize=28:fontcolor=white@0.85:borderw=2:bordercolor=black@0.5:x=(w-text_w)/2:y=h*0.44+56+24:alpha='if(lt(t,-0.75),0,if(lt(t,-0.25),(t--0.75)/0.5,1))':enable='gte(t,-0.75)'"
+          dt="drawtext=fontfile=$F:textfile=txt/end1.txt:fontsize=56:fontcolor=white:borderw=3:bordercolor=black@0.55:x=(w-text_w)/2:y=h*0.44:alpha='if(lt(t,-1.58),0,if(lt(t,-1.08),(t--1.58)/0.5,1))':enable='gte(t,-1.58)'"
+          dt_plain="drawtext=fontfile=$F:textfile=txt/end1.txt:fontsize=56"
+          dt_esc="drawtext=fontfile=$F\\:textfile=txt/end1.txt\\:fontsize=56"
 
           declare -A GRAPHS
-          GRAPHS[full]="$base_v;$base_a;[x1]$dt1,$dt2,fade=t=in:st=0:d=0.45,fade=t=out:st=0.954:d=0.7[vout];[xa1]loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=out:st=0.754:d=0.9[aout]"
-          GRAPHS[no_drawtext]="$base_v;$base_a;[x1]fade=t=in:st=0:d=0.45,fade=t=out:st=0.954:d=0.7[vout];[xa1]loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=out:st=0.754:d=0.9[aout]"
-          GRAPHS[no_loudnorm]="$base_v;$base_a;[x1]$dt1,$dt2,fade=t=in:st=0:d=0.45,fade=t=out:st=0.954:d=0.7[vout];[xa1]afade=t=out:st=0.754:d=0.9[aout]"
-          GRAPHS[no_settb]="${base_v//settb=AVTB,/};$base_a;[x1]fade=t=in:st=0:d=0.45[vout];[xa1]loudnorm=I=-16:TP=-1.5:LRA=11[aout]"
-          GRAPHS[vonly]="$base_v;[x1]null[vout]"
-          GRAPHS[aonly]="$base_a;[xa1]loudnorm=I=-16:TP=-1.5:LRA=11[aout]"
-          GRAPHS[drawtext_only]="[0:v:0]null[v0];[v0]$dt1[vout]"
+          GRAPHS[trivial]="null=out"
+          GRAPHS[settb]="[0:v]settb=AVTB,setpts=PTS-STARTPTS[v]"
+          GRAPHS[xfade]="[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30[v0];[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30[v1];[v0][v1]xfade=transition=fade:duration=0.18:offset=0.42[v]"
+          GRAPHS[drawtext_plain]="[0:v]$dt_plain[v]"
+          GRAPHS[drawtext_full]="[0:v]$dt[v]"
+          GRAPHS[acrossfade]="[0:a]atrim=duration=0.6,asetpts=PTS-STARTPTS[a0];[1:a]atrim=duration=0.6,asetpts=PTS-STARTPTS[a1];[a0][a1]acrossfade=d=0.18[a]"
+          GRAPHS[loudnorm]="[0:a]loudnorm=I=-16:TP=-1.5:LRA=11[a]"
+          GRAPHS[full]="[0:v:0]settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v0];[1:v:0]settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v1];[v0][v1]xfade=transition=fade:duration=0.180:offset=0.420[x1];[0:a:0]atrim=duration=0.600,asetpts=PTS-STARTPTS[a0];[1:a:0]atrim=duration=0.600,asetpts=PTS-STARTPTS[a1];[a0][a1]acrossfade=d=0.180:c1=tri:c2=tri[xa1];[x1]fade=t=in:st=0:d=0.45,fade=t=out:st=0.320:d=0.7[vout];[xa1]loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=out:st=0.120:d=0.9[aout]"
 
-          for name in full no_drawtext no_loudnorm no_settb vonly aonly drawtext_only; do
+          for name in trivial settb xfade drawtext_plain drawtext_full acrossfade loudnorm full; do
             g="${GRAPHS[$name]}"
             echo "=== variant: $name ==="
-            echo "$g" > graph.txt
-            if [ "$name" = "aonly" ]; then
-              ffmpeg -v error -y -i segs/real_0000.mp4 -i segs/real_0001.mp4 \
-                -filter_complex_script graph.txt -map "[aout]" -f null - 2>&1 | head -3
+            if [[ "$name" == acrossfade || "$name" == loudnorm ]]; then
+              ffmpeg -hide_banner -loglevel error -y -i segs/real_0000.mp4 -i segs/real_0001.mp4 \
+                -filter_complex "$g" -map "[a]" -f null - 2>&1 | tail -2
             else
-              ffmpeg -v error -y -i segs/real_0000.mp4 -i segs/real_0001.mp4 \
-                -filter_complex_script graph.txt -map "[vout]" -map "[aout]" -f null - 2>&1 | head -3
+              ffmpeg -hide_banner -loglevel error -y -i segs/real_0000.mp4 -i segs/real_0001.mp4 \
+                -filter_complex "$g" -map "[v]" -f null - 2>&1 | tail -2
             fi
-            rc=$?
-            echo "variant $name rc=$rc" || true
+            echo "rc=$? ($name)"
           done
-      - name: Verdict
-        run: echo "see matrix above"
+      - name: Echo test (does the shell mangle the graph?)
+        run: |
+          G='[0:v]settb=AVTB,setpts=PTS-STARTPTS[v]'
+          echo "simple quoted graph passthrough: $G"
+          ffmpeg -hide_banner -loglevel error -y -f lavfi -i "testsrc2=size=320x240:rate=30:duration=0.5" \
+            -filter_complex "[0:v]null[v]" -map "[v]" -f null - && echo "INLINE LAVFI OK rc=$?"
+          echo '{"t":1}' > /tmp/x.json
+          python3 - <<'PY'
+          import subprocess
+          # exact same argv construction as assemble.py
+          cmd = ["ffmpeg","-hide_banner","-loglevel","error","-y",
+                 "-f","lavfi","-i","testsrc2=size=320x240:rate=30:duration=0.5",
+                 "-filter_complex","[0:v]settb=AVTB,setpts=PTS-STARTPTS[v]",
+                 "-map","[v]","-f","null","-"]
+          p = subprocess.run(cmd, capture_output=True, text=True)
+          print("python-subprocess rc:", p.returncode, (p.stderr or "")[-300:])
+          PY

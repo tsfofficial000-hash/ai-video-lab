@@ -1,13 +1,11 @@
 name: "Setup CineForge"
-description: "Python venv (cached), ffmpeg, OFL fonts + whisper caches — target <=45s warm"
+description: "Python venv (cached), pinned ffmpeg from release asset, OFL fonts - target <=45s warm"
 runs:
   using: "composite"
   steps:
     - uses: actions/setup-python@v5
       with:
         python-version: "3.11"
-        cache: pip
-        cache-dependency-path: requirements-cineforge.txt
     - uses: actions/cache@v4
       with:
         path: ~/cf-venv
@@ -16,10 +14,6 @@ runs:
       with:
         path: media/fonts
         key: fonts-v1
-    - uses: actions/cache@v4
-      with:
-        path: ~/.cache/huggingface
-        key: whisper-models-v1
     - name: Venv (restore-or-build, with hang guard)
       shell: bash
       run: |
@@ -47,10 +41,12 @@ runs:
       shell: bash
       run: |
         has_drawtext() { ffmpeg -hide_banner -filters 2>/dev/null | grep -q "[ ]drawtext "; }
-        # 1st rung: our own release asset - deterministic, ~5s from GitHub CDN
+        # 1st rung: our own release asset (xz, ~50MB each) - deterministic and fast
         if [ ! -x /usr/local/bin/ffmpeg ] || ! has_drawtext; then
-          gh release download ffmpeg-v1 -p "ffmpeg" -O /tmp/cf-ffmpeg --repo "$GITHUB_REPOSITORY" --clobber \
-            && gh release download ffmpeg-v1 -p "ffprobe" -O /tmp/cf-ffprobe --repo "$GITHUB_REPOSITORY" --clobber \
+          gh release download ffmpeg-v1 -p "ffmpeg.xz" -O /tmp/cf-ffmpeg.xz --repo "$GITHUB_REPOSITORY" --clobber \
+            && gh release download ffmpeg-v1 -p "ffprobe.xz" -O /tmp/cf-ffprobe.xz --repo "$GITHUB_REPOSITORY" --clobber \
+            && xz -d -c /tmp/cf-ffmpeg.xz > /tmp/cf-ffmpeg \
+            && xz -d -c /tmp/cf-ffprobe.xz > /tmp/cf-ffprobe \
             && chmod +x /tmp/cf-ffmpeg /tmp/cf-ffprobe \
             && sudo mv /tmp/cf-ffmpeg /usr/local/bin/ffmpeg \
             && sudo mv /tmp/cf-ffprobe /usr/local/bin/ffprobe \

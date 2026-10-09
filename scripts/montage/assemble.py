@@ -172,10 +172,13 @@ def main():
         inputs += ["-i", p]
 
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"] + inputs + [
-        "-filter_complex_script", script_path,
+        # inline -filter_complex: -filter_complex_script is deprecated in ffmpeg 7.0
+        # and breaks on the static runner build ("Filter not found"); inline works
+        # on every version (apt 6.1.1, static 7.0.2+, 8.x)
+        "-filter_complex", graph,
         "-map", "[vout]", "-map", "[aout]",
         "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-        "-pix_fmt", "yuv420p", "-r", str(fps), "-vsync", "cfr",
+        "-pix_fmt", "yuv420p", "-r", str(fps), "-fps_mode", "cfr",
         "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
         "-movflags", "+faststart", a.out]
     print(f"[assemble] master graph: {n} inputs, target {total:.2f}s -> {a.out}", flush=True)

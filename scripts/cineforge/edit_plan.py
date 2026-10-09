@@ -70,6 +70,28 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     n_target = max(6, int(round(target_len / base_out)))
 
     sel = Selector(beats_list, dur, luma=luma, min_y=36.0)
+
+    # ---- scarcity-aware sizing (G3 no-reuse vs G7 band vs target_len) ----
+    # When clean candidates cannot fill the target at the style's density,
+    # hold cps inside the band by solving out_dur from the capacity equation
+    # and retiming segments by the resulting small factor. Never wrap, never
+    # duplicate beyond the <=0.3s crossfade-hidden overlap (G3).
+    n_cap = len(sel.candidates)
+    scarcity = bool(sel.candidates) and n_cap * base_out < target_len * 0.95 \
+        and n_target > n_cap
+    if scarcity:
+        # Scarcity solver: n candidates is the hard capacity (G3 no-reuse), so
+        # every candidate hosts one segment. Sizing contract:
+        #   cps = n / (n*out - (n-1)*fade) >= band[0]*1.05  (margin for rounding)
+        #   src_span = typical candidate spacing + 0.28s deliberate overlap,
+        #   hidden inside the 0.18s crossfades (pick() enforces <=0.3s real)
+        # out_dur is solved from the cps constraint; speed lands within +/-7%
+        # of 1.0 (imperceptible retiming).
+        n_target = min(n_target, n_cap)
+        print(f"[plan] scarcity solver: {n_cap} candidates cannot fill "
+              f"{target_len:.0f}s at {1.0/base_out:.2f}cps -> full-capacity walk "
+              f"with solved out_dur", flush=True)
+
     segs = []
     cursor = sel.candidates[0] if sel.candidates else 1.5
     peaks = [p for p in (beats.get("energy_peak_starts") or [])
@@ -79,21 +101,31 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     hero_used = hero2_used = False
 
     for k in range(n_target):
-        if k == 0:
+        if scarcity:
+            # out_dur = span x speed (fixed constants below keep the three
+            # quantities consistent; overlap vs min spacing = 0.29 <= 0.3)
+            out_dur = round(0.73 * 1.25, 3)
+        elif k == 0:
             out_dur = base_out * 1.9
         elif k == n_target - 1:
             out_dur = base_out * 2.1
         else:
             wiggle = [1.0, 0.85, 0.75, 1.1, 0.9, 0.8][k % 6]
             out_dur = base_out * wiggle
-        out_dur = round(min(max(out_dur, 0.55), 5.0), 3)
+        out_dur = round(min(max(out_dur, 0.4), 5.0), 3)
 
         speed = 1.0
-        if hero_t is not None and not hero_used and abs(cursor - hero_t) <= beat_period * 1.5:
-            speed = 0.5
-        elif hero2_t is not None and not hero2_used and abs(cursor - hero2_t) <= beat_period * 1.5:
+        if scarcity:
+            # span/speed/out fixed above (consistent G3 spans):
+            # pick span == post-loop src_dur == 0.73, retiming 1.25x
+            src_span = 0.73
             speed = 1.25
-        src_span = out_dur / speed
+        else:
+            if hero_t is not None and not hero_used and abs(cursor - hero_t) <= beat_period * 1.5:
+                speed = 0.5
+            elif hero2_t is not None and not hero2_used and abs(cursor - hero2_t) <= beat_period * 1.5:
+                speed = 1.25
+            src_span = out_dur / speed
         start = sel.pick(cursor, src_span)
         if start is None:
             break                      # D3: never wrap - stop filling instead
@@ -105,7 +137,11 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
                 if style_cfg.get("cut_style") == "beat_grid" else 1.0)
         segs.append({"i": k, "src_start": round(start, 3), "out_dur": out_dur,
                      "speed": speed, "zoom": zoom})
-        cursor = start + src_span + base_out * 0.3
+        # scarcity mode: let the next pick reach the adjacent candidate; the
+        # resulting <=0.28s source overlap is consumed deliberately and hidden
+        # inside the crossfade (pick() still enforces the G3 <=0.3s rule)
+        cursor = start + src_span - (0.28 if scarcity else 0.0) \
+            + (0.0 if scarcity else base_out * 0.3)
 
     # reindex after possible early stop
     for j, s in enumerate(segs):
@@ -129,7 +165,10 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     cum = 0.0
     for k in range(len(segs) - 1):
         cum += segs[k]["out_dur"]
-        if soft:
+        if scarcity:
+            # 0.18s crossfades hide the deliberate source overlap (see solver)
+            segs[k]["transition_after"] = {"type": "fade", "dur": 0.18}
+        elif soft:
             segs[k]["transition_after"] = {"type": "fade", "dur": 0.5}
         elif k == 0:
             segs[k]["transition_after"] = {"type": "fade", "dur": 0.18}

@@ -107,8 +107,10 @@ class Selector:
         return worst
 
     def pick(self, cursor, src_span):
-        """Nearest candidate >= cursor whose span is free; None if exhausted.
-        Never wraps back to the opening (D3)."""
+        """Nearest candidate >= cursor whose span is free AND fully bright;
+        None if exhausted. Never wraps back to the opening (D3).
+        G3: the WHOLE span must hold min-Y >= min_y (long spans otherwise
+        sneak past the 1.0s candidate-window check and ship dark frames)."""
         n = len(self.candidates)
         i = self.pos
         while i < n:
@@ -119,6 +121,10 @@ class Selector:
             if c + src_span > self.dur - 0.25:
                 i += 1
                 self.stats["dropped_overlap"] += 0
+                continue
+            if self.luma and window_min_y(self.luma, c, src_span) < self.min_y:
+                i += 1
+                self.stats["dropped_luma"] += 1
                 continue
             if self._overlaps(c, src_span) > self.max_overlap:
                 i += 1

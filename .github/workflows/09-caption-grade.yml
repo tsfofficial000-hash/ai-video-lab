@@ -64,4 +64,6 @@ jobs:
             out/final.mp4
             out/poster.jpg
             media/captions.ass
+            scripts/cineforge/reports/captions_report.json
+            reports/captions_report.json
           retention-days: 7

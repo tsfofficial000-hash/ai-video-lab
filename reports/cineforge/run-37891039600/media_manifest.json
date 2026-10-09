@@ -1,0 +1,17 @@
+{
+ "music": {
+  "license": "generated in-pipeline (no third-party rights)",
+  "mood": "cinematic",
+  "title": "generated_ambient_pad.mp3",
+  "url": null,
+  "attribution_required": false,
+  "safe_for_shorts": true,
+  "bytes": 2881035
+ },
+ "source_video": {
+  "url": "source-v1",
+  "duration": 52.208333,
+  "license": "Blender Foundation CC-BY 4.0 (Sintel trailer, durian.blender.org; via source-v1 cache; attribution: (c) Blender Foundation | durian.blender.org)",
+  "safe_for_shorts": true
+ }
+}

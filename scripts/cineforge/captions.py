@@ -188,6 +188,7 @@ def main():
         # (creative review r1: 168px single line clipped both edges at t=0).
         def hook_lines(txt, size):
             max_w = 0.92 * w
+            lines = [txt]
             for _ in range(8):
                 cw = 0.44 * size
                 maxc = max(4, int(max_w / cw))
@@ -204,10 +205,18 @@ def main():
                 if len(lines) <= 2 and max(len(l) for l in lines) * cw <= max_w:
                     return lines, size
                 size = max(150, int(size * 0.92))
-                if size == 150 and len(lines) <= 3:
-                    # hard floor: allow 3 short lines rather than overflow
-                    if max(len(l) for l in lines) * 0.44 * size <= max_w:
-                        return lines[:3], size
+                if size <= 150:
+                    # final attempt at the floor: a 2-line wrap wins over 3
+                    lines, cur = [], ""
+                    for wd in txt.split():
+                        cand = (cur + " " + wd).strip()
+                        if len(cand) <= maxc or not cur:
+                            cur = cand
+                        else:
+                            lines.append(cur); cur = wd
+                    if cur:
+                        lines.append(cur)
+                    return lines[:3], 150
             return lines[:3], size
         hook_txt_lines, hook_fs = hook_lines(text, hook_size)
         y0 = int(y - (len(hook_txt_lines) - 1) * hook_fs * 0.55)

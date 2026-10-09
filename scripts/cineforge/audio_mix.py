@@ -196,14 +196,27 @@ def main():
         except Exception as e:
             print(f"[mix] sfx pass skipped: {type(e).__name__}: {e}", flush=True)
 
+    # ---- measured output loudness (G6: integrated I must land in [-17,-15]) ----
+    out_i = None
+    try:
+        eb = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", a.out,
+                             "-af", "ebur128=peak=true", "-f", "null", "-"],
+                            capture_output=True, text=True).stderr
+        matches = re.findall(r"I:\s*(-?[\d.]+)\s*LUFS", eb)
+        if matches:
+            out_i = float(matches[-1])
+    except Exception as e:
+        print(f"[mix] loudness measurement skipped: {type(e).__name__}", flush=True)
+
     jdump({"mode": mode, "music": a.music, "target": "I=-16 TP=-1.5 LRA=11",
            "denoise": a.denoise, "duck_depth_db": depth, "duck_windows": n_win,
+           "output_i": out_i,
            "sfx_mixed": sfx_mixed, "out": a.out}, f"{a.reports}/audio_mix_report.json")
     record_stage(a.reports, "07-audio-mix", "success", t0=t0,
                  bottleneck="none (single-pass ffmpeg)",
                  optimization_applied="sidechaincompress diagnostics + synth SFX bed",
-                 optimization_result=f"duck_depth={depth}dB over {n_win} windows, sfx={sfx_mixed}")
-    print(f"mixed ok mode={mode} duck_depth={depth}dB windows={n_win} sfx={sfx_mixed}")
+                 optimization_result=f"duck_depth={depth}dB over {n_win} windows, sfx={sfx_mixed}, outI={out_i}")
+    print(f"mixed ok mode={mode} duck_depth={depth}dB windows={n_win} sfx={sfx_mixed} outI={out_i}")
 
 
 if __name__ == "__main__":

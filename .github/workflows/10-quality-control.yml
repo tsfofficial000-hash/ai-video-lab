@@ -14,6 +14,10 @@ jobs:
         with: { name: stage-09-final, path: final }
       - uses: actions/download-artifact@v4
         with: { name: stage-06-plan, path: plan }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-07-mix, path: mix }
+      - uses: actions/download-artifact@v4
+        with: { name: stage-01-assets, path: assets01 }
       - name: QC gate + auto-repair
         run: |
           set -e
@@ -25,15 +29,19 @@ jobs:
       - name: Gate aggregation (G1-G10 with numbers)
         run: |
           set -e
-          cd scripts/cineforge && python3 gates.py --video ../../out/final.mp4 \
-            --reports ../../reports --style "$(python3 -c "import json;print(json.load(open('../../reports/edit_plan.json')).get('style','beat_montage'))")" || true
-          cd ../.. && cat reports/gates_report.json | head -3 || true
+          FV=$(python3 -c "import glob;c=glob.glob('final/**/final.mp4',recursive=True);print(c[0]);assert c")
+          cd scripts/cineforge && python3 gates.py --video "../../$FV" \
+            --reports ../../reports --search "../..:../../plan:../../mix:../../assets01:../../final" \
+            --style "$(python3 -c "import json,glob;p=(glob.glob('../../plan/**/edit_plan.json',recursive=True) or ['../../reports/edit_plan.json'])[0];print(json.load(open(p)).get('style','beat_montage'))")"
+          cd ../.. && python3 -c "import json;g=json.load(open('reports/gates_report.json'));print('ALL_GREEN',g['ALL_GREEN'],'pending',g.get('PENDING'));assert g['ALL_GREEN'], 'gates RED at stage-10: '+str({k:v['value'] for k,v in g.items() if k.startswith('G') and v.get('green') is False})"
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: stage-10-qc
           path: |
             reports/qc_report.json
             reports/gates_report.json
-            final/out/final.mp4
+            reports/captions_report.json
+            final/**/final.mp4
           retention-days: 7

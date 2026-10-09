@@ -36,7 +36,14 @@ Each entry: hypothesis / change / gate deltas / runtime delta.
 | 22 | (fix) | renderer law out = src/speed vs plan out = src*speed mismatch: scarcity segs overstated out_dur. Contract fixed: explicit src_dur=0.73, speed=src/out=0.772 (subtle slow-mo), src/speed == out_dur exactly. captions.py burned SOURCE times as OUTPUT times (cues 11.9-20.3s in a 9.83s video): transcript now projected through plan segments into output time, out-of-coverage pieces dropped | local: plan 23 segs / 17.80s / cps 1.29 / overlap 0.266; probes 7/7 | - |
 | 23 | 37879732737 | consistency dispatch on 24fcd05 | dispatched | - |
 
-## Defect classesiscovered beyond D1-D7 (all fixed, all with runner evidence)
+| 23 | 37879732737 | G6 search gap at delivery (stage-11 lacked mix artifact) + honest setup pattern | G9 wall=663s PASS but maxSetup=68s RED (honest measurement caught the real cost) | ~13 min |
+| 24 | (perf) | ffmpeg pinned as release asset (xz 50MB, BtbN master w/ drawtext+libass), whisper cache to stage-04/98 only, venv cache | green 37885213747: **12/12 stages, ALL GATES G1-G10 GREEN**, wall 383s, setup 23s | 6.4 min |
+| 25 | 37886393173 (98 draft) | creative r1 review: hook clipped both edges, desert-tail sag, caption double-render -> hook width-fit + motion interleave + piece merge; ALSO found 98 stage-09 `../` path bug (drafts burned nothing, ever) | draft 37888578923 first burnt draft, all axes >=8 | 2m48s |
+| 26 | 37889110062 / 37890113995 | caption pixel samples: fadeblack-window clamp + hook-band padding for sparse speech; dialogue tail bias (span overlap) | dialogue at out 0.8s; samples 3-point measurable | - |
+| 27 | 37891039600 + 37891911705 | **Phase 3 complete: two consecutive ALL-GREEN full runs with all creative fixes** | wall 469/451s, setup 21/32s | 7.8/7.5 min |
+| 28 | 37891926280 / 37891928188 / 37891930331 | Phase 4 style sweep (sad/cinematic/motivational drafts): 3 grades, 3 bands, 3 caption styles, SATAVG 11.2/22.7/21.8 - zero config bleed | all 3 drafts green | ~3 min each |
+
+## Defect classesscovered beyond D1-D7 (all fixed, all with runner evidence)
 
 1. runner ffmpeg 6.1.1 rejects `[voice]` as a filtergraph label (parses as stream specifier)
 2. GH-hosted runners: silent 12-min pip hangs (cache contention) — needs timeout+retry

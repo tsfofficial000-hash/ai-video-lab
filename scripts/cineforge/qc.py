@@ -143,7 +143,16 @@ def check(path, plan, reports):
         cr = jload(reports + "/captions_report.json", {}) if reports else {}
         cues = cr.get("cues")
         if cues:
-            cues = [min(max(c, 0.1), dur - 0.1) for c in cues][:3]
+            # sample where text is fully visible: never inside the deliberate
+            # outro fadeblack (G1 already exempts that window from G1 scoring)
+            fb = 0.4
+            for s in (plan.get("segments") or [])[:-1]:
+                t = (s.get("transition_after") or {}).get("type")
+                if t == "fadeblack":
+                    fb = max(fb, float((s.get("transition_after") or {}).get("dur") or 0.4))
+            win = max(0.1, dur - fb - 0.25)
+            cues = [min(max(c, 0.1), win) for c in cues][:3]
+            cues = sorted(set(cues))
             ratios = [(c, caption_band_white_ratio(path, c)) for c in cues]
             hits = [(c, r) for c, r in ratios if r >= 0.003]
             ok("captions_burned", len(hits) >= 2,

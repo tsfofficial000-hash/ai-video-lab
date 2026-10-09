@@ -31,7 +31,7 @@ def pick_hook(transcript, beats, style):
 
 
 def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
-                    luma_cache=None):
+                    luma_cache=None, transcript=None):
     """Reuse proven montage timeline logic; emit engine-compatible timeline.json.
     D3: selection is forward-only, luma-gated, overlap-free (see selection.Selector).
     `luma` = optional [{t,y}] profile; when absent it is computed from the source
@@ -177,6 +177,20 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
             order.append(by_motion[lo_i]); lo_i += 1
             if lo_i <= hi_i:
                 order.append(by_motion[hi_i]); hi_i -= 1
+        # dialogue-bearing segs must not land in the outro fadeblack zone:
+        # burned captions under a deliberate fade are unreadable
+        speech = (transcript or {}).get("segments") or []
+        def has_speech(s):
+            # any overlap between the segment's source span and a speech span
+            return any(s["src_start"] < x["end"] and x["start"] < s["src_start"] + s["src_dur"]
+                       for x in speech)
+        tail = 2
+        for i in range(len(order) - 1, len(order) - 1 - tail, -1):
+            if i > 1 and has_speech(order[i]):
+                for j in range(1, i):
+                    if not has_speech(order[j]):
+                        order[i], order[j] = order[j], order[i]
+                        break
         segs[:] = order
         for j, s in enumerate(segs):
             s["i"] = j
@@ -247,7 +261,8 @@ def main():
 
     source_meta = dict(meta, path=os.environ.get("CF_SOURCE_PATH") or meta.get("path"))
     segments, audit = build_timeline(source_meta, beats, style_cfg, a.style, target,
-                                     luma_cache=os.path.join(a.reports, "luma.json"))
+                                     luma_cache=os.path.join(a.reports, "luma.json"),
+                                     transcript=transcript)
     total = sum(s["out_dur"] for s in segments) - sum(
         s["transition_after"]["dur"] for s in segments[:-1])
     cps = round(len(segments) / total, 2) if total else 0.0

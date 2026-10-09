@@ -161,6 +161,26 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
                                      max(0.4, dur - 0.25 - s["src_start"])), 3)
             s["out_dur"] = round(s["src_dur"] * s["speed"], 3)
 
+    # ---- motion-variance interleave (creative review r1: desert tail sag) ----
+    # Motion score per segment = mean |dY| of the luma profile inside its span.
+    # Reorder so static shots spread between action beats instead of clumping
+    # (same spans, different presentation order: G3/G7 unaffected).
+    if luma and len(segs) > 5:
+        def motion(s):
+            ys = [q["y"] for q in luma
+                  if s["src_start"] - 0.2 <= q["t"] <= s["src_start"] + s["src_dur"] + 0.2]
+            return (sum(abs(b - a) for a, b in zip(ys, ys[1:])) / max(len(ys) - 1, 1)
+                    if len(ys) > 1 else 0.0)
+        by_motion = sorted(segs, key=motion, reverse=True)
+        order, lo_i, hi_i = [], 0, len(by_motion) - 1
+        while lo_i <= hi_i:                    # strongest, weakest, 2nd, 2nd-weak...
+            order.append(by_motion[lo_i]); lo_i += 1
+            if lo_i <= hi_i:
+                order.append(by_motion[hi_i]); hi_i -= 1
+        segs[:] = order
+        for j, s in enumerate(segs):
+            s["i"] = j
+
     soft = style_cfg.get("transitions") == "soft_fades"
     per_section = max(6, len(segs) // 3)
     # spec 2.4: hard cut default (0.05 pseudo = 1-2 frames), fade <= 0.18,

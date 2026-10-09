@@ -183,12 +183,42 @@ def main():
         h0, h1 = (hook.get("seconds") or [0, 2.5])[:2]
         h1 = min(h1, 2.5)
         y = int(h * safe.get("hook_y_center", 0.30))
-        tags = (r"{\pos(" + f"{w // 2},{y})" +
+        # width fit: Anton avg glyph ~= 0.44x size. Wrap to <=2 lines and drop
+        # the size toward the 150px spec floor until every line fits 92% width
+        # (creative review r1: 168px single line clipped both edges at t=0).
+        def hook_lines(txt, size):
+            max_w = 0.92 * w
+            for _ in range(8):
+                cw = 0.44 * size
+                maxc = max(4, int(max_w / cw))
+                words_l = txt.split()
+                lines, cur = [], ""
+                for wd in words_l:
+                    cand = (cur + " " + wd).strip()
+                    if len(cand) <= maxc or not cur:
+                        cur = cand
+                    else:
+                        lines.append(cur); cur = wd
+                if cur:
+                    lines.append(cur)
+                if len(lines) <= 2 and max(len(l) for l in lines) * cw <= max_w:
+                    return lines, size
+                size = max(150, int(size * 0.92))
+                if size == 150 and len(lines) <= 3:
+                    # hard floor: allow 3 short lines rather than overflow
+                    if max(len(l) for l in lines) * 0.44 * size <= max_w:
+                        return lines[:3], size
+            return lines[:3], size
+        hook_txt_lines, hook_fs = hook_lines(text, hook_size)
+        y0 = int(y - (len(hook_txt_lines) - 1) * hook_fs * 0.55)
+        tags = (r"{\pos(" + f"{w // 2},{y0})" + rf"\fs{hook_fs}" +
                 r"\fad(250,180)\fscx92\fscy92" +
                 r"\t(0,250,\fscx100\fscy100)}")
-        events.append(f"Dialogue: 1,{ts(h0)},{ts(h1)},Hook,,0,0,0,,{tags}{text}")
-        decisions.append({"cue": h0, "element": "hook_card", "placement": f"y={y}",
-                          "reason": "hook_y_center per safe_zones", "face": None})
+        body = r"\N".join(hook_txt_lines)
+        events.append(f"Dialogue: 1,{ts(h0)},{ts(h1)},Hook,,0,0,0,,{tags}{body}")
+        decisions.append({"cue": h0, "element": "hook_card",
+                          "placement": f"y={y0} size={hook_fs} lines={hook_txt_lines}",
+                          "reason": "hook_y_center per safe_zones, width-fitted", "face": None})
 
     # ---- captions ----
     # Transcript times are SOURCE times; the edit is a re-cut. Project each
@@ -214,8 +244,11 @@ def main():
         return rows, max(total, 0.0)
 
     def project_seg(ts_, te_, rows, total):
-        """Project source [ts_,te_] into output time; list of (s,e) pieces."""
-        pieces = []
+        """Project source [ts_,te_] into output time; list of (s,e) pieces.
+        Adjacent plan segs share up to 0.29s of source (crossfade overlap), so
+        consecutive pieces overlap in output time -> merged here so the same
+        sentence never double-renders (creative review r1 complaint #3)."""
+        raw = []
         for r in rows:
             lo, hi = max(ts_, r["src_lo"]), min(te_, r["src_hi"])
             if hi - lo < 0.25:
@@ -224,8 +257,15 @@ def main():
             e_out = r["out_start"] + (hi - r["src_lo"]) / r["speed"]
             s_out, e_out = max(0.05, s_out), min(e_out, total - 0.15)
             if e_out - s_out >= 0.4:
-                pieces.append((round(s_out, 2), round(e_out, 2)))
-        return pieces
+                raw.append((s_out, e_out))
+        raw.sort()
+        merged = []
+        for s, e in raw:
+            if merged and s <= merged[-1][1] - 0.1:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+            else:
+                merged.append((s, e))
+        return [(round(s, 2), round(e, 2)) for s, e in merged]
 
     rows_map, plan_total = src_to_out_map(plan)
     segs = [] if hook_only else (tr.get("segments", []) or [])

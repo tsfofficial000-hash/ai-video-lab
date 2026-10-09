@@ -24,6 +24,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: stage-06-plan, path: plan }
       - uses: actions/download-artifact@v4
+        with: { name: stage-07-mix, path: mix }
+      - uses: actions/download-artifact@v4
         with: { name: stage-00-reports, path: reports00 }
       - uses: actions/download-artifact@v4
         with: { name: stage-01-assets, path: assets01 }
@@ -121,7 +123,7 @@ jobs:
                                 f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}/jobs?per_page=100"],
                                capture_output=True, text=True)
           jobs = json.loads(out.stdout).get('jobs', [])
-          SETUP_PAT = ('set up job', 'checkout', 'set up ', 'cache', 'venv', 'ffmpeg',
+          SETUP_PAT = ('set up job', 'checkout', 'setup', 'set up ', 'cache', 'venv', 'ffmpeg',
                        'fonts', 'install', 'restore', 'pre-run', 'current page',
                        'complete job', 'post ')
           rows, max_setup = [], 0.0
@@ -158,7 +160,7 @@ jobs:
           # finalize gates with measured latency (G9 number + artifact path)
           FV=delivery/cineforge_final.mp4
           cd scripts/cineforge && python3 gates.py --video "../../$FV" \
-            --reports ../../delivery --search "../../delivery:../../plan:../../final:../../assets01:../../reports00" \
+            --reports ../../delivery --search "../../delivery:../../plan:../../mix:../../final:../../assets01:../../reports00" \
             --latency ../../delivery/latency.json || true
           cd ../.. && cp delivery/gates_report.json reports/gates_report.json 2>/dev/null || true
           python3 -c "import json;g=json.load(open('delivery/gates_report.json'));print('FINAL GATES ALL_GREEN:',g['ALL_GREEN'],'pending:',g.get('PENDING'));[print(' ',k,v['green'],v['value'][:110]) for k,v in g.items() if k.startswith('G')];red=[k for k,v in g.items() if k.startswith('G') and v.get('green') is False];assert not red and not g.get('PENDING'), 'gates NOT green at delivery: '+str({k:g[k]['value'] for k in red+list(g.get('PENDING') or [])})"

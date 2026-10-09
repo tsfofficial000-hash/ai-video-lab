@@ -41,31 +41,37 @@ runs:
           [ "$ok" = "1" ] || { echo "pip install failed after 3 attempts"; exit 1; }
         fi
         echo "$HOME/cf-venv/bin" >> $GITHUB_PATH
-    - name: "ffmpeg (capability-driven, drawtext required for titles)"
+    - name: "ffmpeg (pinned release asset, capability-checked)"
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       shell: bash
       run: |
         has_drawtext() { ffmpeg -hide_banner -filters 2>/dev/null | grep -q "[ ]drawtext "; }
-        install_btbn() {
-          # BtbN GPL build (has freetype/drawtext/libass), GitHub-hosted = reliable
-          curl -sSL --max-time 300 -o /tmp/ff.tar.xz \
-            "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" \
-            && sudo tar xJf /tmp/ff.tar.xz --strip-components=1 -C /usr/local/bin \
-               --wildcards '*/bin/ffmpeg' '*/bin/ffprobe' \
-            && sudo chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
-        }
-        if command -v ffmpeg >/dev/null 2>&1 && has_drawtext; then
-          echo "ffmpeg preinstalled with drawtext: $(ffmpeg -version | head -1)"
-        elif for i in 1 2 3; do
-               timeout 300 sudo apt-get update -qq && \
-               timeout 300 sudo apt-get install -y -qq ffmpeg && break || \
-               { echo "apt attempt $i failed"; sleep 5; }
-             done && command -v ffmpeg >/dev/null 2>&1 && has_drawtext; then
-          echo "apt ffmpeg with drawtext: $(ffmpeg -version | head -1)"
-        else
-          echo "installing BtbN static ffmpeg (drawtext-capable)"
-          install_btbn
-          command -v ffmpeg >/dev/null 2>&1 && has_drawtext || { echo "no drawtext-capable ffmpeg"; exit 1; }
-          ffmpeg -version | head -1
+        # 1st rung: our own release asset - deterministic, ~5s from GitHub CDN
+        if [ ! -x /usr/local/bin/ffmpeg ] || ! has_drawtext; then
+          gh release download ffmpeg-v1 -p "ffmpeg" -O /tmp/cf-ffmpeg --repo "$GITHUB_REPOSITORY" --clobber \
+            && gh release download ffmpeg-v1 -p "ffprobe" -O /tmp/cf-ffprobe --repo "$GITHUB_REPOSITORY" --clobber \
+            && chmod +x /tmp/cf-ffmpeg /tmp/cf-ffprobe \
+            && sudo mv /tmp/cf-ffmpeg /usr/local/bin/ffmpeg \
+            && sudo mv /tmp/cf-ffprobe /usr/local/bin/ffprobe \
+            && echo "ffmpeg from release asset: $(ffmpeg -version | head -1)" \
+            || echo "release-asset rung failed - falling through"
+        fi
+        # 2nd rung: preinstalled
+        if ! has_drawtext; then
+          if command -v ffmpeg >/dev/null 2>&1 && has_drawtext; then
+            echo "ffmpeg preinstalled with drawtext: $(ffmpeg -version | head -1)"
+          else
+            # 3rd rung: BtbN GPL build (has freetype/drawtext/libass)
+            echo "installing BtbN static ffmpeg (drawtext-capable)"
+            curl -sSL --max-time 300 -o /tmp/ff.tar.xz \
+              "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" \
+              && sudo tar xJf /tmp/ff.tar.xz --strip-components=1 -C /usr/local/bin \
+                 --wildcards '*/bin/ffmpeg' '*/bin/ffprobe' \
+              && sudo chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
+            command -v ffmpeg >/dev/null 2>&1 && has_drawtext || { echo "no drawtext-capable ffmpeg"; exit 1; }
+            ffmpeg -version | head -1
+          fi
         fi
     - name: OFL fonts (cached, never fails the run)
       shell: bash

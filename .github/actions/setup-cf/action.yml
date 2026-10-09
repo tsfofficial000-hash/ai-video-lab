@@ -1,5 +1,5 @@
 name: "Setup CineForge"
-description: "Python with pip cache, ffmpeg+fonts, cineforge requirements, OFL fonts + whisper caches"
+description: "Python venv (cached), ffmpeg, OFL fonts + whisper caches — target <=45s warm"
 runs:
   using: "composite"
   steps:
@@ -10,49 +10,53 @@ runs:
         cache-dependency-path: requirements-cineforge.txt
     - uses: actions/cache@v4
       with:
+        path: ~/cf-venv
+        key: venv-cf-${{ runner.os }}-v3-${{ hashFiles('requirements-cineforge.txt') }}
+    - uses: actions/cache@v4
+      with:
         path: media/fonts
         key: fonts-v1
     - uses: actions/cache@v4
       with:
         path: ~/.cache/huggingface
         key: whisper-models-v1
-    - name: Install stack (retry + hang guard - GH pip cache can stall silently)
+    - name: Venv (restore-or-build, with hang guard)
       shell: bash
       run: |
         ok=0
-        for i in 1 2 3; do
-          if timeout 360 pip install -r requirements-cineforge.txt; then ok=1; break; fi
-          echo "pip attempt $i failed or hung - retrying"
-          sleep 5
-        done
-        [ "$ok" = "1" ] || { echo "pip install failed after 3 attempts"; exit 1; }
-        # ffmpeg: preinstalled on some runner images; apt is flaky from Azure, so
-        # fall back to a static build before giving up
+        if [ -x ~/cf-venv/bin/python ]; then
+          if timeout 60 ~/cf-venv/bin/python -c "import librosa, faster_whisper, numpy, scenedetect" 2>/dev/null; then
+            ok=1; echo "venv cache hit: $(~/cf-venv/bin/python -V)"
+          else
+            echo "venv cache stale - rebuilding"; rm -rf ~/cf-venv
+          fi
+        fi
+        if [ "$ok" != "1" ]; then
+          python -m venv ~/cf-venv
+          ~/cf-venv/bin/pip install -q --upgrade pip
+          for i in 1 2 3; do
+            if timeout 360 ~/cf-venv/bin/pip install -q -r requirements-cineforge.txt; then ok=1; break; fi
+            echo "pip attempt $i failed or hung - retrying"; sleep 5
+          done
+          [ "$ok" = "1" ] || { echo "pip install failed after 3 attempts"; exit 1; }
+        fi
+        echo "$HOME/cf-venv/bin" >> $GITHUB_PATH
+    - name: ffmpeg (preinstalled on GH images; static fallback)
+      shell: bash
+      run: |
         if command -v ffmpeg >/dev/null 2>&1; then
           echo "ffmpeg preinstalled: $(ffmpeg -version | head -1)"
         else
-          for i in 1 2 3; do
-            if timeout 420 sudo apt-get update -qq && \
-               timeout 420 sudo apt-get install -y -qq ffmpeg fonts-dejavu-core libgl1 libglib2.0-0; then
-              break
-            fi
-            echo "apt attempt $i failed - retrying"
-            sleep 5
-          done
-        fi
-        if ! command -v ffmpeg >/dev/null 2>&1; then
-          echo "apt failed - installing static ffmpeg+ffprobe"
+          echo "apt skipped (flaky) - installing static ffmpeg+ffprobe"
           curl -sSL --max-time 240 -o /tmp/ff.tar.xz \
             https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
             && sudo tar xJf /tmp/ff.tar.xz --strip-components=1 -C /usr/local/bin \
                --wildcards '*/ffmpeg' '*/ffprobe' \
             && sudo ln -sf /usr/local/bin/ffmpeg /usr/bin/ffmpeg \
             && sudo ln -sf /usr/local/bin/ffprobe /usr/bin/ffprobe
+          command -v ffmpeg >/dev/null 2>&1 || { echo "no ffmpeg available"; exit 1; }
+          ffmpeg -version | head -1
         fi
-        command -v ffmpeg >/dev/null 2>&1 || { echo "no ffmpeg available"; exit 1; }
-        # best-effort extras (mediapipe/opencv support); never fatal
-        timeout 120 sudo apt-get install -y -qq libgl1 libglib2.0-0 fonts-dejavu-core || true
-        ffmpeg -version | head -1
     - name: OFL fonts (cached, never fails the run)
       shell: bash
       run: |

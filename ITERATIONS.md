@@ -32,7 +32,11 @@ Each entry: hypothesis / change / gate deltas / runtime delta.
 
 | 21 | 37875877209 | inline -filter_complex (static ffmpeg 7.0.2 misparses -filter_complex_script); fps_mode; scarcity solver (9.88s -> capacity-max plan, consistent spans, whole-span luma gate) | dispatched | — |
 
-## Defect classesdiscovered beyond D1-D7 (all fixed, all with runner evidence)
+| 21 | 37875877209 | dryrun still "Filter not found" with inline graph -> probe v3 verdict: johnvansickle static 7.0.2 has NO drawtext (probe v2's all-0 rc was `$?` after a pipe - tail's exit code). Fix: capability-driven setup (apt 6.1.1 has drawtext; BtbN GPL static fallback) | stages 0-9 GREEN (apt ffmpeg 6.1.1); stage10 RED: captions_burned + duration 9.83s vs plan 17.02s | ~14 min |
+| 22 | (fix) | renderer law out = src/speed vs plan out = src*speed mismatch: scarcity segs overstated out_dur. Contract fixed: explicit src_dur=0.73, speed=src/out=0.772 (subtle slow-mo), src/speed == out_dur exactly. captions.py burned SOURCE times as OUTPUT times (cues 11.9-20.3s in a 9.83s video): transcript now projected through plan segments into output time, out-of-coverage pieces dropped | local: plan 23 segs / 17.80s / cps 1.29 / overlap 0.266; probes 7/7 | - |
+| 23 | 37879732737 | consistency dispatch on 24fcd05 | dispatched | - |
+
+## Defect classesiscovered beyond D1-D7 (all fixed, all with runner evidence)
 
 1. runner ffmpeg 6.1.1 rejects `[voice]` as a filtergraph label (parses as stream specifier)
 2. GH-hosted runners: silent 12-min pip hangs (cache contention) — needs timeout+retry

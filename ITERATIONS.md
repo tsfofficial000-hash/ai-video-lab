@@ -25,7 +25,10 @@ Each entry: hypothesis / change / gate deltas / runtime delta.
 | — | 97 probe 2 | Real 17-seg repro on runner: segs healthy (19 video pkts, 0.66s audio) but master17 = container 10.5s with **37 video packets (1.23s)** — xfade chain starved after 2 segs | root cause: `-shortest` in segment encode + AAC priming → video streams 0.633s vs container 0.66s; offsets used container duration | 5 min |
 | 15 | 37808676481 | `-shortest` removed + assemble offsets from VIDEO stream duration | stages 0-9 GREEN; stage10: **G2 GREEN median=94**, G1 RED: outro fadeblack 0.4s + global fade-out stacked = 0.5s black = 5.1% > 2% budget | ~24 min |
 | 16 | (fix) | fadeblack scaled to runtime (min(0.4, 2%·total)) + no second fade-out when outro is fadeblack | — | — |
-| 17 | 37811634227 | → dispatch | pending | — |
+| 17 | 37811634227 | → dispatch | stage1 RED: setup-cf flake (apt class) → apt already conditional; superseded by #37 re-dispatch | — |
+| 18 | 37814402550 (#37) | clean re-dispatch after 2287af3 | **12/12 stages SUCCESS**, wall 13m18s; but `gates_report.json` RED on G2/G3/G7/G10 — masked by `\|\| true`: gates.py scanned nonexistent `out/final.mp4` (artifact nests under `final/`), and selection_audit / audio_mix_report / media_manifest were never downloaded into stage-10 → plumbing, not video, defect | 13m18s |
+| 19 | 37818948356 (98 #2) | single-shot iterate on HEAD 1dce20e after 98 #1 failed at stage-09 burn (dryrun gate consumed render) | SUCCESS 2m31s, 1080x1920 draft, 10.03s / 17 segs / 1.72 cps; QC 12/12; captions still n/a (style had `captions: null`) | 2m31s |
+| 20 | (fix round) | gates.py v2 (glob report discovery incl. final/, real video path, own 2fps luma scan, G6 measured `output_i` via ebur128 in audio_mix.py, G9 latency-aware) + stage-10 strict gates + stage-11 G9 from jobs API + captions ON per style (bold_highlight) + mood plumbed to edit_plan + setup-cf venv cache (setup ≤45s target) | local fixture of #37 artifacts: **ALL GREEN exit 0**; probes 7/7 | — |
 
 ## Defect classes discovered beyond D1-D7 (all fixed, all with runner evidence)
 
@@ -39,3 +42,5 @@ Each entry: hypothesis / change / gate deltas / runtime delta.
 8. `loudnorm`/video streams with `color_range=unknown` break mjpeg extraction (`-strict unofficial`)
 9. Edit-tool input path strips `[m` sequences (ANSI-reset lookalike) — patch via python/chr(91)
 10. v4 artifacts are run-scoped — solo stage dispatches cannot download prior-run artifacts
+11. gates.py scanned `out/final.mp4` while artifacts nest under `final/` — same family as D2 (report paths assumed, never resolved); fixed by glob discovery + strict assert
+12. masked red: `|| true` on the gates step certified a not-green run as success — gates now `set -e`-strict at stage-10 and assert at stage-11

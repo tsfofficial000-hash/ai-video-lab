@@ -41,20 +41,30 @@ runs:
           [ "$ok" = "1" ] || { echo "pip install failed after 3 attempts"; exit 1; }
         fi
         echo "$HOME/cf-venv/bin" >> $GITHUB_PATH
-    - name: ffmpeg (preinstalled on GH images; static fallback)
+    - name: "ffmpeg (capability-driven, drawtext required for titles)"
       shell: bash
       run: |
-        if command -v ffmpeg >/dev/null 2>&1; then
-          echo "ffmpeg preinstalled: $(ffmpeg -version | head -1)"
-        else
-          echo "apt skipped (flaky) - installing static ffmpeg+ffprobe"
-          curl -sSL --max-time 240 -o /tmp/ff.tar.xz \
-            https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+        has_drawtext() { ffmpeg -hide_banner -filters 2>/dev/null | grep -q "[ ]drawtext "; }
+        install_btbn() {
+          # BtbN GPL build (has freetype/drawtext/libass), GitHub-hosted = reliable
+          curl -sSL --max-time 300 -o /tmp/ff.tar.xz \
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" \
             && sudo tar xJf /tmp/ff.tar.xz --strip-components=1 -C /usr/local/bin \
-               --wildcards '*/ffmpeg' '*/ffprobe' \
-            && sudo ln -sf /usr/local/bin/ffmpeg /usr/bin/ffmpeg \
-            && sudo ln -sf /usr/local/bin/ffprobe /usr/bin/ffprobe
-          command -v ffmpeg >/dev/null 2>&1 || { echo "no ffmpeg available"; exit 1; }
+               --wildcards '*/bin/ffmpeg' '*/bin/ffprobe' \
+            && sudo chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
+        }
+        if command -v ffmpeg >/dev/null 2>&1 && has_drawtext; then
+          echo "ffmpeg preinstalled with drawtext: $(ffmpeg -version | head -1)"
+        elif for i in 1 2 3; do
+               timeout 300 sudo apt-get update -qq && \
+               timeout 300 sudo apt-get install -y -qq ffmpeg && break || \
+               { echo "apt attempt $i failed"; sleep 5; }
+             done && command -v ffmpeg >/dev/null 2>&1 && has_drawtext; then
+          echo "apt ffmpeg with drawtext: $(ffmpeg -version | head -1)"
+        else
+          echo "installing BtbN static ffmpeg (drawtext-capable)"
+          install_btbn
+          command -v ffmpeg >/dev/null 2>&1 && has_drawtext || { echo "no drawtext-capable ffmpeg"; exit 1; }
           ffmpeg -version | head -1
         fi
     - name: OFL fonts (cached, never fails the run)

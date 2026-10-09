@@ -72,7 +72,7 @@ jobs:
           [ -s media/proxy.mp4 ] || { echo "proxy empty"; exit 1; }
           ffmpeg -v error -y -i source.mp4 -vn -ac 1 -ar 22050 media/audio.wav
 
-      - name: "Stages 03-06: audio + beats (+ transcript skipped for draft speed)"
+      - name: "Stages 03-06: audio + beats + transcript (draft-speed single job)"
         run: |
           set -e
           SRC_DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 source.mp4)
@@ -87,7 +87,8 @@ jobs:
           set -e
           cd scripts/cineforge && CF_SOURCE_PATH=../../media/proxy.mp4 \
             python3 edit_plan.py --reports ../../reports --out ../../out \
-            --style "${{ inputs.style }}" --target-len "${{ inputs.target_len }}"
+            --style "${{ inputs.style }}" --target-len "${{ inputs.target_len }}" \
+            --mood "${{ inputs.mood }}"
           cd ../..
 
       - name: "Stage 07: audio mix (music + SFX + duck diagnostics)"
@@ -136,11 +137,15 @@ jobs:
             cp out/master.mp4 out/final.mp4
           fi
 
-      - name: "Stage 10: QC"
+      - name: "Stage 10: QC + gates report (draft; strict gate runs happen in 99)"
         run: |
           set -e
           cd scripts/cineforge && python3 qc.py --video ../../out/final.mp4 \
             --plan ../../reports/edit_plan.json --reports ../../reports; cd ../..
+          cd scripts/cineforge && python3 gates.py --video ../../out/final.mp4 \
+            --reports ../../reports --search "../../reports" \
+            --style "${{ inputs.style }}" || true; cd ../..
+          python3 -c "import json;g=json.load(open('reports/gates_report.json'));print('DRAFT GATES:',g['ALL_GREEN'],'pending',g.get('PENDING'));[print(' ',k,v['green'],v['value'][:100]) for k,v in g.items() if k.startswith('G') and v.get('green') is False]"
 
       - name: "Evidence bundle (draft)"
         if: always()
@@ -148,6 +153,7 @@ jobs:
           set -e
           mkdir -p draft_evidence
           for f in out/final.mp4 out/poster.jpg reports/qc_report.json \
+                   reports/gates_report.json \
                    reports/edit_plan.json reports/audio_mix_report.json \
                    reports/selection_audit.json reports/captions_report.json \
                    reports/fonts_report.json reports/media_manifest.json; do

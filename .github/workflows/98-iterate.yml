@@ -117,6 +117,8 @@ jobs:
             --mixed ../../media/mixed_audio.wav --out ../../out/master.mp4 \
             ${{ inputs.draft == 'true' && '--draft' || '' }}
           cd ../..
+        env:
+          CF_GRADE_DRAFT: 1  # creative loop reviews the real grade
 
       - name: "Stage 09: captions + hook burn"
         run: |

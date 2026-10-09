@@ -162,7 +162,8 @@ jobs:
                    reports/gates_report.json \
                    reports/edit_plan.json reports/audio_mix_report.json \
                    reports/selection_audit.json reports/captions_report.json \
-                   reports/fonts_report.json reports/media_manifest.json; do
+                   reports/fonts_report.json reports/media_manifest.json \
+                   reports/transcript.json; do
             [ -f "$f" ] && cp "$f" draft_evidence/ || true
           done
           F=draft_evidence/final.mp4

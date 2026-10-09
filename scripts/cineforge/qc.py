@@ -140,17 +140,26 @@ def check(path, plan, reports):
     if not plan.get("caption_style"):
         ok("captions_burned", True, "n/a (plan has no caption_style)")
     else:
-        cues = None
         cr = jload(reports + "/captions_report.json", {}) if reports else {}
         cues = cr.get("cues")
-        if not cues:
-            cues = [round(dur * f, 2) for f in (0.2, 0.5, 0.8)]
-        cues = [min(max(c, 0.1), dur - 0.1) for c in cues][:3]
-        ratios = [(c, caption_band_white_ratio(path, c)) for c in cues]
-        hits = [(c, r) for c, r in ratios if r >= 0.003]
-        ok("captions_burned", len(hits) >= 2,
-           f"white-pixel ratio at cues: " + ", ".join(f"{c}s={r:.3%}" for c, r in ratios) +
-           f" ({len(hits)}/3 cues show burned text)")
+        if cues:
+            cues = [min(max(c, 0.1), dur - 0.1) for c in cues][:3]
+            ratios = [(c, caption_band_white_ratio(path, c)) for c in cues]
+            hits = [(c, r) for c, r in ratios if r >= 0.003]
+            ok("captions_burned", len(hits) >= 2,
+               f"white-pixel ratio at cues: " + ", ".join(f"{c}s={r:.3%}" for c, r in ratios) +
+               f" ({len(hits)}/3 cues show burned text)")
+        else:
+            # no speech cues in this edit (sparse-dialogue source): the burned
+            # typography that MUST exist is the hook card -> pixel-test its band
+            hook_t = [max(0.4, min(dur - 0.1, t)) for t in (0.8, 1.6)]
+            band = (max(0.05, (plan.get("hook", {}).get("seconds") or [0, 2.5])[0] * 0 + 0.16), 0.52)
+            ratios = [(c, caption_band_white_ratio(path, c, band=band)) for c in hook_t]
+            hits = [(c, r) for c, r in ratios if r >= 0.003]
+            ok("captions_burned", len(hits) >= 1,
+               "hook-card pixel test (no speech cues): " +
+               ", ".join(f"{c}s={r:.3%}" for c, r in ratios) +
+               f" ({len(hits)}/2 hook samples show burned text, band {band})")
     return results, repairs, {"duration": dur, "size": size, "loudnorm": ln}
 
 

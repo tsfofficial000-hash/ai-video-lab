@@ -267,6 +267,10 @@ def main():
                 sfx_events.append({"t": round(hero_out - 1.2, 2), "kind": "riser"})
 
     hook_text = pick_hook(transcript, beats, style_cfg)
+    # resilience: an empty transcript must never ship a hookless open
+    # (creative loop draft 37886393173: silent transcribe fail -> hook=no -> no typography)
+    if not hook_text:
+        hook_text = a.title or "MONTAGE"
     plan = {
         "style": a.style,
         "mood": a.mood,

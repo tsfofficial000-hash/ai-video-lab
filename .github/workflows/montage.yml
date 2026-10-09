@@ -15,11 +15,6 @@ on:
         description: "Pre-existing loader.to job id to resume (optional)"
         required: false
         default: ""
-  push:
-    paths:
-      - ".github/workflows/montage.yml"
-      - "scripts/montage/**"
-      - "requirements-montage.txt"
 
 permissions:
   contents: write

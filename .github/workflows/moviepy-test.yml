@@ -2,14 +2,6 @@ name: "B - MoviePy 2.x Programmatic Edit"
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/moviepy-test.yml"
-      - "scripts/moviepy_complex_test.py"
-      - "scripts/build_master.sh"
-      - "scripts/fetch_footage.sh"
-      - "scripts/gen_subs.sh"
-      - "scripts/make_srt.py"
 
 permissions:
   contents: write

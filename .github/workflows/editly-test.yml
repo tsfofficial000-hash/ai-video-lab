@@ -2,15 +2,6 @@ name: "C - Editly JSON Templating"
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/editly-test.yml"
-      - "scripts/editly_complex_test.sh"
-      - "scripts/gen_editly_spec.py"
-      - "scripts/build_master.sh"
-      - "scripts/fetch_footage.sh"
-      - "scripts/gen_subs.sh"
-      - "scripts/make_srt.py"
 
 permissions:
   contents: write

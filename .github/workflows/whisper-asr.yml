@@ -2,13 +2,6 @@ name: "D - Whisper ASR (faster-whisper vs openai-whisper)"
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/whisper-asr.yml"
-      - "scripts/whisper_complex_test.sh"
-      - "scripts/whisper_compare.py"
-      - "scripts/build_master.sh"
-      - "scripts/fetch_footage.sh"
 
 permissions:
   contents: write

@@ -2,14 +2,6 @@ name: "A - FFmpeg Baseline (complex filtergraph)"
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/ffmpeg-baseline.yml"
-      - "scripts/ffmpeg_complex_test.sh"
-      - "scripts/build_master.sh"
-      - "scripts/fetch_footage.sh"
-      - "scripts/gen_subs.sh"
-      - "scripts/make_srt.py"
 
 permissions:
   contents: write

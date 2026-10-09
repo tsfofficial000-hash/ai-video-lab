@@ -191,10 +191,50 @@ def main():
                           "reason": "hook_y_center per safe_zones", "face": None})
 
     # ---- captions ----
+    # Transcript times are SOURCE times; the edit is a re-cut. Project each
+    # transcript segment through the plan's segments into OUTPUT time:
+    #   out = seg_out_start + (src - seg_src_lo) / speed
+    # (renderer law: output = src / speed within a segment). Pieces that fall
+    # outside the edit's coverage are dropped, so cues always live inside the
+    # rendered duration and the G5 pixel test samples real burned text.
+    def src_to_out_map(pl):
+        rows, cum = [], 0.0
+        segs_p = pl.get("segments", []) or []
+        for k, s in enumerate(segs_p):
+            sd = float(s.get("src_dur") or (s.get("out_dur") or 0.0) / max(s.get("speed") or 1.0, 0.05))
+            od = float(s.get("out_dur") or 0.0)
+            rows.append({"src_lo": float(s["src_start"]), "src_hi": float(s["src_start"]) + sd,
+                         "out_start": cum, "speed": max(float(s.get("speed") or 1.0), 0.05),
+                         "out_dur": od})
+            tr_d = 0.0
+            if k < len(segs_p) - 1:
+                tr_d = float((s.get("transition_after") or {}).get("dur") or 0.0)
+            cum += od - tr_d
+        total = cum + (rows[-1]["out_dur"] if rows else 0.0)
+        return rows, max(total, 0.0)
+
+    def project_seg(ts_, te_, rows, total):
+        """Project source [ts_,te_] into output time; list of (s,e) pieces."""
+        pieces = []
+        for r in rows:
+            lo, hi = max(ts_, r["src_lo"]), min(te_, r["src_hi"])
+            if hi - lo < 0.25:
+                continue
+            s_out = r["out_start"] + (lo - r["src_lo"]) / r["speed"]
+            e_out = r["out_start"] + (hi - r["src_lo"]) / r["speed"]
+            s_out, e_out = max(0.05, s_out), min(e_out, total - 0.15)
+            if e_out - s_out >= 0.4:
+                pieces.append((round(s_out, 2), round(e_out, 2)))
+        return pieces
+
+    rows_map, plan_total = src_to_out_map(plan)
     segs = [] if hook_only else (tr.get("segments", []) or [])
     for seg in segs:
         text = seg["text"].strip()
         if not text:
+            continue
+        pieces = project_seg(float(seg["start"]), float(seg["end"]), rows_map, plan_total)
+        if not pieces:
             continue
         if st.get("uppercase"):
             text = text.upper()
@@ -214,14 +254,9 @@ def main():
         fade = ""
         if st.get("fade_per_line"):
             fade = r"{\fad(" + f"{int(st['fade_per_line']*300)},{int(st['fade_per_line']*300)})" + "}"
-        dur = seg["end"] - seg["start"]
-        n = max(1, int(dur // 3.5) + 1)
-        chunk = dur / n
-        for k in range(n):
-            s0 = seg["start"] + k * chunk
-            e0 = min(seg["end"], s0 + chunk - 0.05)
-            events.append(f"Dialogue: 0,{ts(s0)},{ts(e0)},Cine,,0,0,0,,{fade}{body}")
-            cue = round((s0 + e0) / 2, 2)
+        for s_out, e_out in pieces:
+            events.append(f"Dialogue: 0,{ts(s_out)},{ts(e_out)},Cine,,0,0,0,,{fade}{body}")
+            cue = round((s_out + e_out) / 2, 2)
             cues.append(cue)
             decisions.append({"cue": cue, "element": "caption",
                               "placement": f"marginV={mv}",

@@ -102,9 +102,12 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
 
     for k in range(n_target):
         if scarcity:
-            # out_dur = span x speed (fixed constants below keep the three
-            # quantities consistent; overlap vs min spacing = 0.29 <= 0.3)
-            out_dur = round(0.73 * 1.25, 3)
+            # capacity equation: cps = n/(n*out - (n-1)*fade) >= band*1.08.
+            # Renderer law: output = min(out_dur, src/speed) -> we store
+            # src_dur=0.73 explicitly and speed=src/out (<=1, subtle slow-mo)
+            # so src/speed == out_dur exactly: no trim waste, spans consistent.
+            out_dur = round(min(max((n_cap / (band[0] * 1.08)
+                                     + (n_cap - 1) * 0.18) / n_cap, 0.4), 5.0), 3)
         elif k == 0:
             out_dur = base_out * 1.9
         elif k == n_target - 1:
@@ -116,10 +119,10 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
 
         speed = 1.0
         if scarcity:
-            # span/speed/out fixed above (consistent G3 spans):
-            # pick span == post-loop src_dur == 0.73, retiming 1.25x
+            # span/speed/out consistent: src_dur stored explicitly below;
+            # overlap = 0.73 - min candidate spacing (0.44) = 0.29 <= 0.3 (G3)
             src_span = 0.73
-            speed = 1.25
+            speed = round(max(0.55, min(1.0, src_span / out_dur)), 3)
         else:
             if hero_t is not None and not hero_used and abs(cursor - hero_t) <= beat_period * 1.5:
                 speed = 0.5
@@ -136,7 +139,8 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
         zoom = ([1.0, 1.08, 1.0, 1.13, 1.0, 1.06][k % 6]
                 if style_cfg.get("cut_style") == "beat_grid" else 1.0)
         segs.append({"i": k, "src_start": round(start, 3), "out_dur": out_dur,
-                     "speed": speed, "zoom": zoom})
+                     "speed": speed, "zoom": zoom,
+                     **({"src_dur": src_span} if scarcity else {})})
         # scarcity mode: let the next pick reach the adjacent candidate; the
         # resulting <=0.28s source overlap is consumed deliberately and hidden
         # inside the crossfade (pick() still enforces the G3 <=0.3s rule)
@@ -152,8 +156,10 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
               f"(luma gate dropped {audit['n_dropped_luma']})", flush=True)
 
     for s in segs:
-        s["src_dur"] = round(min(s["out_dur"] / s["speed"], max(0.4, dur - 0.25 - s["src_start"])), 3)
-        s["out_dur"] = round(s["src_dur"] * s["speed"], 3)
+        if "src_dur" not in s:  # scarcity segs already carry consistent spans
+            s["src_dur"] = round(min(s["out_dur"] / s["speed"],
+                                     max(0.4, dur - 0.25 - s["src_start"])), 3)
+            s["out_dur"] = round(s["src_dur"] * s["speed"], 3)
 
     soft = style_cfg.get("transitions") == "soft_fades"
     per_section = max(6, len(segs) // 3)

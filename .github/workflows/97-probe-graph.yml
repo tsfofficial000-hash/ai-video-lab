@@ -1,0 +1,70 @@
+name: "97 - Probe: filtergraph bisection on runner ffmpeg"
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "run id whose graph to test (informational)"
+        required: false
+        default: ""
+
+permissions: { contents: read }
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: ffmpeg version
+        run: ffmpeg -version | head -1
+      - name: Build 2 lavfi segments (same settb/scale/fps chain as render_segments)
+        run: |
+          set -e
+          mkdir -p segs
+          for i in 0 1; do
+            ffmpeg -v error -y -f lavfi -i "testsrc2=size=1280x720:rate=30:duration=1.5" \
+              -vf "settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p" \
+              -c:v libx264 -preset ultrafast -crf 28 -an segs/seg_00$i.mp4
+          done
+          ffmpeg -v error -y -f lavfi -i "sine=frequency=440:duration=1.5" -c:a aac segs/seg_0000.m4a || true
+          # re-mux with audio to mirror real segs (video+aac)
+          for i in 0 1; do
+            ffmpeg -v error -y -i segs/seg_00$i.mp4 -f lavfi -i "sine=frequency=330:duration=1.5" \
+              -c:v copy -c:a aac -shortest segs/real_00$i.mp4
+          done
+      - name: Bisection matrix
+        run: |
+          set -e
+          F=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+          mkdir -p txt && echo "END CARD" > txt/end1.txt && echo "sub" > txt/end2.txt
+
+          base_v='[0:v:0]settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v0];[1:v:0]settb=AVTB,scale=1080:1920,setsar=1,setpts=PTS-STARTPTS,fps=30,format=yuv420p[v1];[v0][v1]xfade=transition=fade:duration=0.180:offset=1.087[x1]'
+          base_a='[0:a:0]atrim=duration=1.267,asetpts=PTS-STARTPTS[a0];[1:a:0]atrim=duration=0.567,asetpts=PTS-STARTPTS[a1];[a0][a1]acrossfade=d=0.180:c1=tri:c2=tri[xa1]'
+          dt1="drawtext=fontfile=$F:textfile=txt/end1.txt:fontsize=56:fontcolor=white:borderw=3:bordercolor=black@0.55:x=(w-text_w)/2:y=h*0.44:alpha='if(lt(t,-0.95),0,if(lt(t,-0.45),(t--0.95)/0.5,1))':enable='gte(t,-0.95)'"
+          dt2="drawtext=fontfile=$F:textfile=txt/end2.txt:fontsize=28:fontcolor=white@0.85:borderw=2:bordercolor=black@0.5:x=(w-text_w)/2:y=h*0.44+56+24:alpha='if(lt(t,-0.75),0,if(lt(t,-0.25),(t--0.75)/0.5,1))':enable='gte(t,-0.75)'"
+
+          declare -A GRAPHS
+          GRAPHS[full]="$base_v;$base_a;[x1]$dt1,$dt2,fade=t=in:st=0:d=0.45,fade=t=out:st=0.954:d=0.7[vout];[xa1]loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=out:st=0.754:d=0.9[aout]"
+          GRAPHS[no_drawtext]="$base_v;$base_a;[x1]fade=t=in:st=0:d=0.45,fade=t=out:st=0.954:d=0.7[vout];[xa1]loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=out:st=0.754:d=0.9[aout]"
+          GRAPHS[no_loudnorm]="$base_v;$base_a;[x1]$dt1,$dt2,fade=t=in:st=0:d=0.45,fade=t=out:st=0.954:d=0.7[vout];[xa1]afade=t=out:st=0.754:d=0.9[aout]"
+          GRAPHS[no_settb]="${base_v//settb=AVTB,/};$base_a;[x1]fade=t=in:st=0:d=0.45[vout];[xa1]loudnorm=I=-16:TP=-1.5:LRA=11[aout]"
+          GRAPHS[vonly]="$base_v;[x1]null[vout]"
+          GRAPHS[aonly]="$base_a;[xa1]loudnorm=I=-16:TP=-1.5:LRA=11[aout]"
+          GRAPHS[drawtext_only]="[0:v:0]null[v0];[v0]$dt1[vout]"
+
+          for name in full no_drawtext no_loudnorm no_settb vonly aonly drawtext_only; do
+            g="${GRAPHS[$name]}"
+            echo "=== variant: $name ==="
+            echo "$g" > graph.txt
+            if [ "$name" = "aonly" ]; then
+              ffmpeg -v error -y -i segs/real_0000.mp4 -i segs/real_0001.mp4 \
+                -filter_complex_script graph.txt -map "[aout]" -f null - 2>&1 | head -3
+            else
+              ffmpeg -v error -y -i segs/real_0000.mp4 -i segs/real_0001.mp4 \
+                -filter_complex_script graph.txt -map "[vout]" -map "[aout]" -f null - 2>&1 | head -3
+            fi
+            rc=$?
+            echo "variant $name rc=$rc" || true
+          done
+      - name: Verdict
+        run: echo "see matrix above"

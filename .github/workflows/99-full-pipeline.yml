@@ -66,6 +66,7 @@ jobs:
     with:
       style: ${{ inputs.style }}
       target_len: ${{ inputs.target_len }}
+      mood: ${{ inputs.mood }}
       title: ""
   stage7:
     needs: stage6

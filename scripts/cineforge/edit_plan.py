@@ -163,6 +163,7 @@ def main():
     ap.add_argument("--out", default="out")
     ap.add_argument("--style", default="beat_montage")
     ap.add_argument("--target-len", type=float, default=None)
+    ap.add_argument("--mood", default="cinematic")
     ap.add_argument("--title", default="MONTAGE")
     a = ap.parse_args()
 
@@ -203,6 +204,7 @@ def main():
     hook_text = pick_hook(transcript, beats, style_cfg)
     plan = {
         "style": a.style,
+        "mood": a.mood,
         "target_duration": round(total, 2),
         "aspect_ratio": "9:16",
         "fps": 30,

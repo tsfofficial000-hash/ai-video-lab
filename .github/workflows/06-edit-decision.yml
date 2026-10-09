@@ -4,11 +4,13 @@ on:
     inputs:
       style: { description: "style key (configs/styles.json)", required: false, default: "beat_montage" }
       target_len: { description: "target seconds", required: false, default: "" }
+      mood: { description: "music mood", required: false, default: "cinematic" }
       title: { description: "title overlay", required: false, default: "" }
   workflow_call:
     inputs:
       style: { type: string, default: "beat_montage" }
       target_len: { type: string, default: "" }
+      mood: { type: string, default: "cinematic" }
       title: { type: string, default: "" }
 
 jobs:
@@ -34,6 +36,7 @@ jobs:
           cd scripts/cineforge && CF_SOURCE_PATH="../../$PX" python3 edit_plan.py --reports ../../reports --out ../../out \
             --style "${{ inputs.style || 'beat_montage' }}" \
             --target-len "${{ inputs.target_len }}" \
+            --mood "${{ inputs.mood || 'cinematic' }}" \
             --title "${{ inputs.title || 'MONTAGE' }}"
           cd ../.. && python3 -c "import json;p=json.load(open('reports/edit_plan.json'));print('style',p['style'],'target',p['target_duration'],'segs',len(p['segments']),'cps',p.get('cut_density_cps'),'align_ms',p.get('beat_alignment_ms'))"
       - uses: actions/upload-artifact@v4

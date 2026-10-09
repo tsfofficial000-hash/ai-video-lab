@@ -30,7 +30,9 @@ Each entry: hypothesis / change / gate deltas / runtime delta.
 | 19 | 37818948356 (98 #2) | single-shot iterate on HEAD 1dce20e after 98 #1 failed at stage-09 burn (dryrun gate consumed render) | SUCCESS 2m31s, 1080x1920 draft, 10.03s / 17 segs / 1.72 cps; QC 12/12; captions still n/a (style had `captions: null`) | 2m31s |
 | 20 | (fix round) | gates.py v2 (glob report discovery incl. final/, real video path, own 2fps luma scan, G6 measured `output_i` via ebur128 in audio_mix.py, G9 latency-aware) + stage-10 strict gates + stage-11 G9 from jobs API + captions ON per style (bold_highlight) + mood plumbed to edit_plan + setup-cf venv cache (setup ≤45s target) | local fixture of #37 artifacts: **ALL GREEN exit 0**; probes 7/7 | — |
 
-## Defect classes discovered beyond D1-D7 (all fixed, all with runner evidence)
+| 21 | 37875877209 | inline -filter_complex (static ffmpeg 7.0.2 misparses -filter_complex_script); fps_mode; scarcity solver (9.88s -> capacity-max plan, consistent spans, whole-span luma gate) | dispatched | — |
+
+## Defect classesdiscovered beyond D1-D7 (all fixed, all with runner evidence)
 
 1. runner ffmpeg 6.1.1 rejects `[voice]` as a filtergraph label (parses as stream specifier)
 2. GH-hosted runners: silent 12-min pip hangs (cache contention) — needs timeout+retry

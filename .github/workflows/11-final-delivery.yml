@@ -108,6 +108,61 @@ jobs:
           PY
           ls -la delivery/
 
+      - name: Measure G9 latency from GitHub jobs API + finalize gates
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          set -e
+          python3 - <<'PY'
+          import json, os, subprocess
+          from datetime import datetime
+          def ts(s):
+              return datetime.fromisoformat(s.replace('Z', '+00:00')) if s else None
+          out = subprocess.run(['gh', 'api',
+                                f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}/jobs?per_page=100"],
+                               capture_output=True, text=True)
+          jobs = json.loads(out.stdout).get('jobs', [])
+          SETUP_PAT = ('set up job', 'checkout', 'set up ', 'cache', 'venv', 'ffmpeg',
+                       'fonts', 'install', 'restore', 'pre-run', 'current page',
+                       'complete job', 'post ')
+          rows, max_setup = [], 0.0
+          run_start = None
+          for j in jobs:
+              jst, jend = ts(j.get('started_at')), ts(j.get('completed_at'))
+              if run_start is None and jst:
+                  run_start = jst
+              run_start = min(run_start, jst) if (jst and run_start) else (run_start or jst)
+              dur = (jend - jst).total_seconds() if (jst and jend) else None
+              setup = None
+              work = [s for s in j.get('steps', [])
+                      if s.get('started_at') and not any(p in s['name'].lower() for p in SETUP_PAT)]
+              if work and jst:
+                  first_work = min(ts(s['started_at']) for s in work)
+                  setup = (first_work - jst).total_seconds()
+              elif dur:
+                  setup = dur
+              if setup and j.get('conclusion') == 'success':
+                  max_setup = max(max_setup, setup)
+              rows.append({'job': j['name'], 'status': j.get('conclusion'),
+                           'wall_seconds': round(dur, 1) if dur else None,
+                           'setup_seconds': round(setup, 1) if setup is not None else None})
+          # wall of the run so far (this job is still running -> include now)
+          now = datetime.utcnow().replace(tzinfo=ts('2026-01-01T00:00:00Z').tzinfo)
+          wall = (now - run_start).total_seconds() if run_start else None
+          lat = json.load(open('delivery/latency.json'))
+          lat.update({'wall_seconds': round(wall, 1), 'max_job_setup_seconds': round(max_setup, 1),
+                      'jobs': rows,
+                      'note': 'wall measured at delivery; upstream jobs complete before this job starts'})
+          json.dump(lat, open('delivery/latency.json', 'w'), indent=1)
+          print(f'G9: wall={wall:.0f}s (<=720?) maxSetup={max_setup:.0f}s (<=45?) jobs={len(rows)}')
+          PY
+          # finalize gates with measured latency (G9 number + artifact path)
+          FV=delivery/cineforge_final.mp4
+          cd scripts/cineforge && python3 gates.py --video "../../$FV" \
+            --reports ../../delivery --search "../../delivery:../../plan:../../final:../../assets01:../../reports00" \
+            --latency ../../delivery/latency.json || true
+          cd ../.. && cp delivery/gates_report.json reports/gates_report.json 2>/dev/null || true
+          python3 -c "import json;g=json.load(open('delivery/gates_report.json'));print('FINAL GATES ALL_GREEN:',g['ALL_GREEN'],'pending:',g.get('PENDING'));[print(' ',k,v['green'],v['value'][:110]) for k,v in g.items() if k.startswith('G')]"
+
       - uses: actions/upload-artifact@v4
         with: { name: cineforge-delivery, path: delivery/, retention-days: 30 }
 
@@ -129,7 +184,7 @@ jobs:
         run: |
           set -e
           mkdir -p reports/cineforge/run-${{ github.run_id }}
-          for f in qc_report.json latency.json media_manifest.json edit_plan.json environment.json contact_sheet.png aesthetic_report.md; do
+          for f in qc_report.json gates_report.json latency.json media_manifest.json edit_plan.json environment.json contact_sheet.png aesthetic_report.md; do
             [ -f "delivery/$f" ] && cp "delivery/$f" "reports/cineforge/run-${{ github.run_id }}/" || true
           done
           git config user.name "cineforge bot"

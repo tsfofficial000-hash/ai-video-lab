@@ -29,14 +29,61 @@ def write_textfiles(meta, outdir):
 
 
 def find_font():
-    cands = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-             "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"]
+    """N2: repo fonts (fetch_fonts output) first - the ASS hook path uses
+    media/fonts, drawtext must not silently depend on system DejaVu."""
+    cands = []
+    env_dir = os.environ.get("CF_FONTS_DIR")
+    if env_dir:
+        cands += [os.path.join(env_dir, f) for f in
+                  ("Anton-Regular.ttf", "Montserrat-Bold.ttf")]
+    repo_media = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                              "..", "..", "media", "fonts"))
+    cands += [os.path.join(repo_media, f) for f in
+              ("Anton-Regular.ttf", "Montserrat-Bold.ttf")]
+    cands += ["media/fonts/Anton-Regular.ttf", "media/fonts/Montserrat-Bold.ttf"]
+    cands += ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+              "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+              "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"]
     for c in cands:
         if os.path.isfile(c):
             return c
     raise RuntimeError("no bold sans font found for drawtext")
+
+
+def endcard_positions(oh):
+    """E7: end-card is pinned to the BOTTOM safe-zone band (y >= 86% height).
+    The v2.0 y=h*0.44 anchor burned the credit over the subject's face."""
+    import math
+    y1 = math.ceil(oh * 0.86)          # ceil: never a hair under the band top
+    y2 = y1 + int(oh * 0.030) + int(oh * 0.012)
+    return y1, y2
+
+
+def endcard_decision(oh):
+    """E7: per-run placement decision record (logged next to the render)."""
+    y1, y2 = endcard_positions(oh)
+    return {"policy": (f"bottom safe band: first line y={y1} >= 86% of {oh}px; "
+                       "below the caption marginV zone; face-bbox avoidance not "
+                       "required at this anchor"),
+            "y1": y1, "y2": y2, "canvas_h": oh,
+            "face_cache_used": False,
+            "band_top_fraction": 0.86}
+
+
+def endcard_overlays(oh, fs_end, fs_end2, total, txt1, txt2, font, txtfiles):
+    """E7: the two end-card drawtext filters, anchored at the bottom band."""
+    y1, y2 = endcard_positions(oh)
+    return [
+        f"drawtext=fontfile={font}:textfile={txtfiles['end1']}:fontsize={fs_end}:"
+        f"fontcolor=white:borderw=3:bordercolor=black@0.55:x=(w-text_w)/2:y={y1}:"
+        f"alpha='if(lt(t,{total-2.6:.2f}),0,if(lt(t,{total-2.1:.2f}),(t-{total-2.6:.2f})/0.5,1))':"
+        f"enable='gte(t,{total-2.6:.2f})'",
+        f"drawtext=fontfile={font}:textfile={txtfiles['end2']}:fontsize={fs_end2}:"
+        f"fontcolor=white@0.85:borderw=2:bordercolor=black@0.5:x=(w-text_w)/2:y={y2}:"
+        f"alpha='if(lt(t,{total-2.4:.2f}),0,if(lt(t,{total-1.9:.2f}),(t-{total-2.4:.2f})/0.5,1))':"
+        f"enable='gte(t,{total-2.4:.2f})'",
+    ]
 
 
 def real_duration(path):
@@ -130,22 +177,26 @@ def main():
 
     alpha_in = ("if(lt(t,1.0),0,if(lt(t,1.6),(t-1.0)/0.6,"
                 "if(lt(t,3.6),1,if(lt(t,4.2),(4.2-t)/0.6,0))))")
+    endcard = endcard_overlays(oh, fs_end, fs_end2, total,
+                               txt1="AI VIDEO LAB", txt2="FFMPEG x GITHUB ACTIONS",
+                               font=font, txtfiles=txt)
     overlays = ([] if suppress_title else [
         f"drawtext=fontfile={font}:textfile={txt['main']}:fontsize={fs_main}:"
         f"fontcolor=white:borderw=3:bordercolor=black@0.55:x=(w-text_w)/2:y=h*0.36:"
         f"alpha='{alpha_in}':enable='between(t,1.0,4.2)'",
         f"drawtext=fontfile={font}:textfile={txt['sub']}:fontsize={fs_sub}:"
         f"fontcolor=white@0.92:borderw=2:bordercolor=black@0.5:x=(w-text_w)/2:y=h*0.36+{fs_main}+28:"
-        f"alpha='{alpha_in}':enable='between(t,1.0,4.2)'"]) + [
-        f"drawtext=fontfile={font}:textfile={txt['end1']}:fontsize={fs_end}:"
-        f"fontcolor=white:borderw=3:bordercolor=black@0.55:x=(w-text_w)/2:y=h*0.44:"
-        f"alpha='if(lt(t,{total-2.6:.2f}),0,if(lt(t,{total-2.1:.2f}),(t-{total-2.6:.2f})/0.5,1))':"
-        f"enable='gte(t,{total-2.6:.2f})'",
-        f"drawtext=fontfile={font}:textfile={txt['end2']}:fontsize={fs_end2}:"
-        f"fontcolor=white@0.85:borderw=2:bordercolor=black@0.5:x=(w-text_w)/2:y=h*0.44+{fs_end}+24:"
-        f"alpha='if(lt(t,{total-2.4:.2f}),0,if(lt(t,{total-1.9:.2f}),(t-{total-2.4:.2f})/0.5,1))':"
-        f"enable='gte(t,{total-2.4:.2f})'",
-    ]
+        f"alpha='{alpha_in}':enable='between(t,1.0,4.2)'"]
+    ) + endcard
+
+    dec_path = os.path.join(os.path.dirname(os.path.abspath(a.out)),
+                            "endcard_decision.json")
+    try:
+        import json as _json
+        _json.dump(endcard_decision(oh), open(dec_path, "w"), indent=1)
+        print(f"[assemble] end-card decision -> {dec_path}", flush=True)
+    except Exception as _e:
+        print(f"[assemble] end-card decision log failed: {_e}", flush=True)
 
     last_tr = segs[-2]["transition_after"]["type"] if len(segs) > 1 else "none"
     fades = [f"fade=t=in:st=0:d=0.45"]

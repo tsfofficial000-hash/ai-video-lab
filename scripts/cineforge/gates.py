@@ -247,11 +247,29 @@ def main():
         g6_val = f"music=none-for-style mode={mix.get('mode')} outI={out_i}"
 
     # ---- G7 PACING: cuts/s in band + beat alignment ----
-    cps = plan.get("cut_density_cps")
-    align = plan.get("beat_alignment_ms")
+    # E6 extension: cluster histogram (no scene contributes > max_per_scene
+    # segments) + transition mix inside the style band
+    styles_cfg = jload(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "..", "..", "configs", "styles.json"), {})
+    tm_band = (styles_cfg.get(style) or {}).get("transition_mix") or \
+        {"pseudo_cut_min": 0.0, "fade_max": 1.0}
+    hist = audit.get("cluster_histogram") or {}
+    cap = audit.get("max_per_scene")
+    clusters_ok = (not hist) or (cap is None) or all(v <= cap for v in hist.values())
+    tr_mix = plan.get("transition_mix") or audit.get("transition_mix") or {}
+    n_tr = sum(tr_mix.values())
+    pseudo_frac = (tr_mix.get("pseudo_cut", 0) / n_tr) if n_tr else 0.0
+    fade_frac = (tr_mix.get("fade", 0) / n_tr) if n_tr else 0.0
+    mix_ok = (n_tr > 0 and pseudo_frac >= tm_band["pseudo_cut_min"]
+              and fade_frac <= tm_band["fade_max"])
     g7 = (cps is not None and band[0] <= cps <= band[1]
-          and align is not None and float(align) <= 60)
-    g7_val = f"cuts/s={cps} band={band} alignMs={align}"
+          and align is not None and float(align) <= 60
+          and clusters_ok and mix_ok)
+    g7_val = (f"cuts/s={cps} band={band} alignMs={align} "
+              f"clustersMax={max(hist.values()) if hist else 0}"
+              f"{'<' + str(cap) if cap is not None else ' (no cap)'} "
+              f"mix pseudo={pseudo_frac:.0%} fade={fade_frac:.0%} "
+              f"(band {tm_band})")
 
     # ---- G8 EVIDENCE: bundle list verified at delivery; here check artifacts ----
     needed = ["edit_plan.json", "qc_report.json", "media_manifest.json"]

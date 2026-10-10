@@ -70,19 +70,27 @@ def dark_ranges(luma, thr=30, step=0.5, min_len=0.6):
 
 
 class Selector:
-    """Forward-only, overlap-free, luma-gated candidate walk over a beat grid."""
+    """Forward-only, overlap-free, luma-gated candidate walk over a beat grid.
+    E6: optional per-scene-cluster diversity cap (max N segments per
+    PySceneDetect scene) so near-identical shots cannot clump mid-montage."""
 
     def __init__(self, beats, dur, luma=None, min_y=30.0, head_guard=1.5,
-                 tail_guard=None, max_overlap=0.3):
+                 tail_guard=None, max_overlap=0.3, scene_of=None,
+                 max_per_scene=None, scene_cuts=None):
         self.dur = dur
         self.min_y = min_y
         self.max_overlap = max_overlap
         self.luma = luma or []
         self.tail_guard = tail_guard if tail_guard is not None else max(1.5, 0.05 * dur)
         self.head_guard = head_guard
+        self.scene_of = scene_of
+        self.max_per_scene = max_per_scene
+        self.scene_cuts = sorted(scene_cuts or [])
         self.dark = dark_ranges(self.luma) if self.luma else []
         self.used = []  # (start, end) reserved source spans
-        self.stats = {"dropped_luma": 0, "dropped_overlap": 0, "dropped_exhausted": 0}
+        self.scene_usage = {}
+        self.stats = {"dropped_luma": 0, "dropped_overlap": 0,
+                      "dropped_exhausted": 0, "dropped_scene_cap": 0}
         hi = dur - self.tail_guard
         self.candidates = []
         for b in sorted({round(b, 3) for b in beats}):
@@ -130,7 +138,16 @@ class Selector:
                 i += 1
                 self.stats["dropped_overlap"] += 1
                 continue
+            if self.scene_of is not None and self.max_per_scene is not None:
+                sid = self.scene_of(c + 0.5 * src_span)
+                if self.scene_usage.get(sid, 0) >= self.max_per_scene:
+                    i += 1
+                    self.stats["dropped_scene_cap"] += 1
+                    continue
             self.used.append((c, c + src_span))
+            if self.scene_of is not None and self.max_per_scene is not None:
+                sid = self.scene_of(c + 0.5 * src_span)
+                self.scene_usage[sid] = self.scene_usage.get(sid, 0) + 1
             self.pos = i + 1
             return c
         self.stats["dropped_exhausted"] += 1
@@ -143,6 +160,11 @@ class Selector:
             ov = z1 - a2
             if ov > self.max_overlap:
                 overlaps.append(round(ov, 3))
+        hist = {}
+        if self.scene_of is not None:
+            for (a1, z1) in spans:
+                sid = self.scene_of(a1 + 0.5 * (z1 - a1))
+                hist[str(sid)] = hist.get(str(sid), 0) + 1
         return {
             "wraparound": False,
             "luma_gate_min_y": self.min_y,
@@ -154,6 +176,10 @@ class Selector:
             "n_dropped_luma": self.stats["dropped_luma"],
             "n_dropped_overlap": self.stats["dropped_overlap"],
             "n_dropped_exhausted": self.stats["dropped_exhausted"],
+            "n_dropped_scene_cap": self.stats["dropped_scene_cap"],
+            "max_per_scene": self.max_per_scene,
+            "scene_cuts": [round(c, 2) for c in self.scene_cuts],
+            "cluster_histogram": hist,
             "overlaps_gt_030s": overlaps,
             "selected_span": [round(spans[0][0], 3), round(spans[-1][1], 3)] if spans else None,
         }

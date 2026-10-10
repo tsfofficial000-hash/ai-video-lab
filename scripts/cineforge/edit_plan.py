@@ -120,6 +120,25 @@ def choose_hook(cands, width_chars=30):
     return min(texts, key=len) if texts else ""
 
 
+def _scene_cuts_detect(src_path):
+    """E6 fallback when no ingest bar map exists: PySceneDetect on the source."""
+    try:
+        from scenedetect import detect, ContentDetector
+        return [s.get_seconds() for (s, e) in detect(src_path, ContentDetector(threshold=27.0))]
+    except Exception as e:
+        print(f"[plan] scene detect unavailable ({type(e).__name__}) - no cluster cap",
+              flush=True)
+        return []
+
+
+def _scene_of_factory(cuts):
+    import bisect
+    cs = sorted(cuts)
+    def f(t):
+        return bisect.bisect_right(cs, float(t)) - 1
+    return f
+
+
 def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
                     luma_cache=None, transcript=None, reports_dir=None,
                     requested_len=None):
@@ -175,6 +194,16 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     sc_margin = 1.08
     min_y = 36.0
 
+    # ---- E6: scene clusters - max 2 segments per PySceneDetect scene -------
+    barmap = load_bar_map(reports_dir, source_meta)
+    scene_cuts = list((barmap or {}).get("scene_cuts") or [])
+    if not scene_cuts and source_meta.get("path"):
+        scene_cuts = _scene_cuts_detect(source_meta.get("path"))
+    max_per_scene = style_cfg.get("max_per_scene")
+    scene_of = _scene_of_factory(scene_cuts) if scene_cuts else None
+    print(f"[plan] scene clusters: {len(scene_cuts)} cuts, max_per_scene={max_per_scene}",
+          flush=True)
+
     def _predict_total(n_cap_, margin_, base_out_, tgt_):
         n_tgt = max(6, int(round(tgt_ / base_out_)))
         if not n_cap_:
@@ -183,7 +212,8 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
             return n_cap_ / (band[0] * margin_), True
         return min(tgt_, n_tgt * base_out_), False
 
-    sel = Selector(beats_list, dur, luma=luma, min_y=min_y)
+    sel = Selector(beats_list, dur, luma=luma, min_y=min_y, scene_of=scene_of,
+                   max_per_scene=max_per_scene, scene_cuts=scene_cuts)
     n_cap = len(sel.candidates)
     pred, scarcity = _predict_total(n_cap, sc_margin, base_out, target_len)
     if pred < goal and scarcity:
@@ -198,7 +228,8 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
                 break
     if pred < goal and luma and min_y > 30.0:
         # L2: widen the luma floor (max -6 points, declared) and re-count
-        sel2 = Selector(beats_list, dur, luma=luma, min_y=30.0)
+        sel2 = Selector(beats_list, dur, luma=luma, min_y=30.0, scene_of=scene_of,
+                        max_per_scene=max_per_scene, scene_cuts=scene_cuts)
         n_cap2 = len(sel2.candidates)
         for m in (sc_margin, 1.05, 1.00):
             if n_cap2 / (band[0] * m) >= goal:
@@ -342,7 +373,7 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     # ---- E1: per-segment active_crop from the ingest-time bar map ----------
     # A vertical editor that ships letterbox bars inside a full-bleed claim is
     # not top-notch: scope shots and full-frame shots each get their own crop.
-    barmap = load_bar_map(reports_dir, source_meta)
+    # (barmap was already loaded above for the E6 scene clusters)
     bar_census = {"map": bool(barmap), "attached": 0, "scenes": 0}
     if barmap:
         try:
@@ -361,33 +392,71 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
 
     soft = style_cfg.get("transitions") == "soft_fades"
     per_section = max(6, len(segs) // 3)
-    # spec 2.4: hard cut default (0.05 pseudo = 1-2 frames), fade <= 0.18,
+    # spec 2.4 + E6: hard pseudo-cut default (0.05 = 1-2 frames), fade <= 0.18,
     # fadewhite ONLY at section boundaries <= 2 frames (0.067 @30fps),
-    # fadeblack ONLY as the final transition <= 0.4s
+    # fadeblack ONLY as the final transition <= 0.4s.
+    # E6: the scarcity path uses the SAME mix builder - the v2.0 all-0.18-fade
+    # scarcity special case (22/22 identical transitions) is gone. Its 0.28s
+    # source overlap stays inside the G3 <=0.3s rule and the 0.05s xfade simply
+    # skips the remainder - visually a hard cut.
     flash_dur = round(2.0 / 30.0, 3)
+    est_total = sum(x["out_dur"] for x in segs)
+    fb_dur = round(min(0.4, max(0.12, est_total * 0.018)), 3)
+    decisions_tr = []
+    for k in range(len(segs) - 1):
+        if soft:
+            t = ("fade", 0.5)
+        elif k == 0:
+            t = ("fade", 0.18)              # opening
+        elif (k + 1) == len(segs) - 1:
+            t = ("fadeblack", fb_dur)       # outro (G1 budget-scaled)
+        elif (k + 1) % per_section == 0:
+            t = ("fadewhite", flash_dur)    # section bound, <= 2 frames
+        else:
+            t = ("fade", 0.05)              # pseudo-cut workhorse
+        decisions_tr.append([k, t])
+
+    # E6 band enforcement: the optional typographic transitions (opening fade,
+    # section fadewhites) demote to pseudo-cuts until the style's pseudo-cut
+    # minimum holds. fadeblack is never demoted. "fadewhite only at section
+    # bounds" stays true - demotion removes events, it never relocates them.
+    tm_band_cfg = style_cfg.get("transition_mix") or {}
+    pmin = float(tm_band_cfg.get("pseudo_cut_min") or 0.0)
+    if decisions_tr and pmin > 0:
+        n_tr_ = len(decisions_tr)
+        need = int(-(-pmin * n_tr_ // 1))   # ceil(pmin * n)
+        pseudo_now = sum(1 for _, (t_, d_) in decisions_tr if t_ == "fade" and d_ <= 0.06)
+        demotable = [idx for idx, (k_, (t_, d_)) in enumerate(decisions_tr)
+                     if t_ in ("fade", "fadewhite") and k_ != 0
+                     or (t_ == "fade" and k_ == 0)]
+        # demote the opening fade first, then extra fadewhites
+        order_dm = ([i for i in demotable if decisions_tr[i][0] == 0]
+                    + [i for i in demotable if decisions_tr[i][1][0] == "fadewhite"])
+        for idx in order_dm:
+            if pseudo_now >= need:
+                break
+            if decisions_tr[idx][1][0] in ("fade", "fadewhite"):
+                decisions_tr[idx][1] = ("fade", 0.05)
+                pseudo_now += 1
+
+    mix_census = {"pseudo_cut": 0, "fade": 0, "fadewhite": 0, "fadeblack": 0}
     section_times = []
     cum = 0.0
-    for k in range(len(segs) - 1):
+    for k, (t_, d_) in decisions_tr:
         cum += segs[k]["out_dur"]
-        if scarcity:
-            # 0.18s crossfades hide the deliberate source overlap (see solver)
-            segs[k]["transition_after"] = {"type": "fade", "dur": 0.18}
-        elif soft:
-            segs[k]["transition_after"] = {"type": "fade", "dur": 0.5}
-        elif k == 0:
-            segs[k]["transition_after"] = {"type": "fade", "dur": 0.18}
-        elif (k + 1) == len(segs) - 1:
-            # G1 2% black budget: scale the outro fade with runtime
-            est_total = sum(x["out_dur"] for x in segs)
-            fb = round(min(0.4, max(0.12, est_total * 0.018)), 3)
-            segs[k]["transition_after"] = {"type": "fadeblack", "dur": fb}
-        elif (k + 1) % per_section == 0:
-            segs[k]["transition_after"] = {"type": "fadewhite", "dur": flash_dur}
+        segs[k]["transition_after"] = {"type": t_, "dur": d_}
+        if t_ == "fade" and d_ <= 0.06:
+            mix_census["pseudo_cut"] += 1
+        elif t_ == "fadewhite":
+            mix_census["fadewhite"] += 1
             section_times.append(round(cum, 2))
+        elif t_ == "fadeblack":
+            mix_census["fadeblack"] += 1
         else:
-            segs[k]["transition_after"] = {"type": "fade", "dur": 0.05}
+            mix_census["fade"] += 1
     if segs:
         segs[-1]["transition_after"] = {"type": "none", "dur": 0.0}
+    transition_mix = mix_census
 
     # G7 metric: median |cut - nearest beat| in ms (cuts sit on the beat grid)
     import statistics
@@ -399,6 +468,7 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     audit["cut_density_target_cps"] = round(cps_target, 2)
     audit["bar_map"] = bar_census
     audit["relaxations"] = relaxations
+    audit["transition_mix"] = transition_mix
 
     # E4: honest impossibility contract - measured delivered vs requested
     delivered_total = sum(s["out_dur"] for s in segs) - sum(
@@ -539,6 +609,9 @@ def main():
     # always declare the relaxation record - empty means "tried, none needed",
     # the impossibility note carries the reasons when none could help
     plan["relaxations"] = audit.get("relaxations") or []
+    plan["transition_mix"] = audit.get("transition_mix") or {}
+    plan["scene_diversity"] = {"max_per_scene": audit.get("max_per_scene"),
+                               "cluster_histogram": audit.get("cluster_histogram") or {}}
     if audit.get("target_impossible"):
         plan["target_impossible_note"] = audit["target_impossible"]
     jdump(plan, f"{a.reports}/edit_plan.json")

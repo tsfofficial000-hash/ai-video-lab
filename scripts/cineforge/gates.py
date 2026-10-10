@@ -249,6 +249,8 @@ def main():
     # ---- G7 PACING: cuts/s in band + beat alignment ----
     # E6 extension: cluster histogram (no scene contributes > max_per_scene
     # segments) + transition mix inside the style band
+    cps = plan.get("cut_density_cps")
+    align = plan.get("beat_alignment_ms")
     styles_cfg = jload(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     "..", "..", "configs", "styles.json"), {})
     tm_band = (styles_cfg.get(style) or {}).get("transition_mix") or \

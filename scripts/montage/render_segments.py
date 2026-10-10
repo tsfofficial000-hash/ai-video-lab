@@ -32,12 +32,16 @@ def seg_crop(meta, seg):
     return ac
 
 
-def fg_geometry(meta, seg, zoom):
+def fg_geometry(meta, seg, zoom=None):
     """Foreground window geometry per vertical mode.
     cover_crop/smart_crop -> fill canvas (full-bleed, crop = canvas size from a
     zoomed fill); blur_fill -> contain-fit (fallback layout).
     Geometry uses THIS SEGMENT's active picture area when the bar map gave one,
-    else the meta-level one, else the raw frame."""
+    else the meta-level one, else the raw frame.
+    Back-compat (D4 probe contract): fg_geometry(meta, zoom) treats the second
+    positional arg as zoom with no segment-level crop."""
+    if zoom is None:                 # legacy two-arg call: (meta, zoom)
+        seg, zoom = {}, seg
     ac = seg_crop(meta, seg)
     sw, sh = (ac["w"], ac["h"]) if ac else (meta["src_w"], meta["src_h"])
     ow, oh = meta["out_w"], meta["out_h"]

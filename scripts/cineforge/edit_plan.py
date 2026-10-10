@@ -204,56 +204,88 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     print(f"[plan] scene clusters: {len(scene_cuts)} cuts, max_per_scene={max_per_scene}",
           flush=True)
 
-    def _predict_total(n_cap_, margin_, base_out_, tgt_):
+    def _predict_total(n_eff_, margin_, base_out_, tgt_):
         n_tgt = max(6, int(round(tgt_ / base_out_)))
-        if not n_cap_:
+        if not n_eff_:
             return 0.0, True
-        if n_cap_ * base_out_ < tgt_ * 0.95 and n_tgt > n_cap_:
-            return n_cap_ / (band[0] * margin_), True
+        if n_eff_ * base_out_ < tgt_ * 0.95 and n_tgt > n_eff_:
+            return n_eff_ / (band[0] * margin_), True
         return min(tgt_, n_tgt * base_out_), False
+
+    def _mix_transition_sum(n, fb=0.30, flash=round(2.0 / 30.0, 3)):
+        """Total transition seconds the E6 mix builder produces for a
+        full-capacity walk of n segments (k0 fade 0.18 + outro fadeblack +
+        section fadewhites + 0.05 pseudo-cuts). Iteration-2 fix: the v2.1
+        capacity equation assumed (n-1)*0.18 - the all-fade assumption - so
+        the solved out_dur overshot and delivered cps landed BELOW the band
+        (run 38042389349: 1.14 vs band floor 1.2)."""
+        if n <= 1:
+            return 0.0
+        n_tr = n - 1
+        per_section = max(6, n // 3)
+        n_fw = sum(1 for k in range(n_tr)
+                   if k != 0 and (k + 1) != n_tr and (k + 1) % per_section == 0)
+        return 0.18 + fb + n_fw * flash + max(0, n_tr - 2 - n_fw) * 0.05
 
     sel = Selector(beats_list, dur, luma=luma, min_y=min_y, scene_of=scene_of,
                    max_per_scene=max_per_scene, scene_cuts=scene_cuts)
     n_cap = len(sel.candidates)
-    pred, scarcity = _predict_total(n_cap, sc_margin, base_out, target_len)
+    # E4xE6: effective capacity under the scene-diversity cap - the sizing
+    # equation and the ladder must reason about what the walk can ACTUALLY
+    # pick (run 38042389349: 35 candidates but 7 candidate-bearing clusters
+    # x cap 2 = 14 effective)
+    from collections import Counter as _Counter
+    _cc = _Counter(scene_of(c) for c in sel.candidates) if scene_of is not None else {}
+    n_eff = sum(min(v, max_per_scene) for v in _cc.values()) \
+        if (scene_of is not None and max_per_scene is not None) else n_cap
+    n_clusters = len(_cc)
+    n_eff = max(n_eff, min(n_cap, 6))   # the walk needs >= 6 segs to ship at all
+    pred, scarcity = _predict_total(n_eff, sc_margin, base_out, target_len)
     if pred < goal and scarcity:
         # L1: cps margin toward the band's lower edge (declared)
         for m, label in ((1.05, "cps_margin_1.05"), (1.00, "cps_band_lower_edge")):
-            if n_cap / (band[0] * m) >= goal:
+            if n_eff / (band[0] * m) >= goal:
                 relaxations.append({"kind": label, "from": sc_margin, "to": m,
                                     "reason": f"reach {goal:.1f}s (80% of "
                                               f"{float(requested):.0f}s requested)"})
                 sc_margin = m
-                pred = n_cap / (band[0] * m)
+                pred = n_eff / (band[0] * m)
                 break
     if pred < goal and luma and min_y > 30.0:
         # L2: widen the luma floor (max -6 points, declared) and re-count
         sel2 = Selector(beats_list, dur, luma=luma, min_y=30.0, scene_of=scene_of,
                         max_per_scene=max_per_scene, scene_cuts=scene_cuts)
         n_cap2 = len(sel2.candidates)
+        _cc2 = _Counter(scene_of(c) for c in sel2.candidates) if scene_of is not None else {}
+        n_eff2 = sum(min(v, max_per_scene) for v in _cc2.values()) \
+            if (scene_of is not None and max_per_scene is not None) else n_cap2
+        n_eff2 = max(n_eff2, min(n_cap2, 6))
         for m in (sc_margin, 1.05, 1.00):
-            if n_cap2 / (band[0] * m) >= goal:
+            if n_eff2 / (band[0] * m) >= goal:
                 relaxations.append({"kind": "luma_floor", "from": min_y, "to": 30.0,
-                                    "reason": f"candidate capacity {n_cap}->{n_cap2}; "
+                                    "reason": f"effective capacity {n_eff}->{n_eff2}; "
                                               f"reach {goal:.1f}s"})
                 if m != sc_margin:
                     relaxations.append({"kind": "cps_band_lower_edge", "from": sc_margin,
                                         "to": m, "reason": "combined with luma floor"})
                 sel, n_cap, scarcity = sel2, n_cap2, True
-                min_y, sc_margin = 30.0, m
-                pred = n_cap2 / (band[0] * m)
+                n_eff, min_y, sc_margin = n_eff2, 30.0, m
+                pred = n_eff2 / (band[0] * m)
                 break
         else:
             if n_cap2 > n_cap:
                 relaxations.append({"kind": "luma_floor", "from": min_y, "to": 30.0,
-                                    "reason": f"candidate capacity {n_cap}->{n_cap2} "
+                                    "reason": f"effective capacity {n_eff}->{n_eff2} "
                                               f"(still short)"})
                 sel, n_cap, min_y = sel2, n_cap2, 30.0
-            pred, scarcity = _predict_total(n_cap, sc_margin, base_out, target_len)
+                n_eff = n_eff2
+            pred, scarcity = _predict_total(n_eff, sc_margin, base_out, target_len)
             if pred < goal:
-                reasons.append(f"{n_cap} clean candidates cannot fill "
-                               f"{float(requested):.0f}s at style density band {band} "
-                               f"even after the declared relaxations")
+                reasons.append(f"{n_eff} scene-cap-effective segments (from {n_cap} clean "
+                               f"candidates in {n_clusters} candidate-bearing clusters x "
+                               f"cap {max_per_scene}) cannot fill {float(requested):.0f}s "
+                               f"at style density band {band} even after the declared "
+                               f"relaxations")
     if scarcity:
         # Scarcity solver: n candidates is the hard capacity (G3 no-reuse), so
         # every candidate hosts one segment. Sizing contract:
@@ -262,10 +294,12 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
         #   hidden inside the crossfades (pick() enforces <=0.3s real)
         # out_dur is solved from the cps constraint; speed lands within +/-7%
         # of 1.0 (imperceptible retiming).
-        n_target = min(n_target, n_cap)
-        print(f"[plan] scarcity solver: {n_cap} candidates fill only ~{pred:.1f}s "
-              f"of the {float(requested):.0f}s request at {1.0/base_out:.2f}cps "
-              f"(margin {sc_margin}) -> full-capacity walk", flush=True)
+        n_target = min(n_target, n_eff)
+        print(f"[plan] scarcity solver: {n_eff} scene-cap-effective segments "
+              f"({n_cap} candidates / {n_clusters} clusters x cap {max_per_scene}) "
+              f"fill only ~{pred:.1f}s of the {float(requested):.0f}s request at "
+              f"{1.0/base_out:.2f}cps (margin {sc_margin}) -> full-capacity walk",
+              flush=True)
 
     segs = []
     cursor = sel.candidates[0] if sel.candidates else 1.5
@@ -281,8 +315,8 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
             # Renderer law: output = min(out_dur, src/speed) -> we store
             # src_dur=0.73 explicitly and speed=src/out (<=1, subtle slow-mo)
             # so src/speed == out_dur exactly: no trim waste, spans consistent.
-            out_dur = round(min(max((n_cap / (band[0] * sc_margin)
-                                     + (n_cap - 1) * 0.18) / n_cap, 0.4), 5.0), 3)
+            out_dur = round(min(max((n_eff / (band[0] * sc_margin)
+                                     + _mix_transition_sum(n_eff)) / n_eff, 0.4), 5.0), 3)
         elif k == 0:
             out_dur = base_out * 1.9
         elif k == n_target - 1:
@@ -481,13 +515,18 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
             "style": style,
             "cuts_band": band,
             "n_candidates": audit.get("n_candidates"),
+            "n_effective_capacity": n_eff,
+            "n_clusters": n_clusters,
+            "max_per_scene": max_per_scene,
             "relaxations": relaxations,
             "reasons": reasons or [
-                f"clean-candidate capacity {audit.get('n_candidates')} cannot reach "
-                f"{0.8 * float(requested_len):.1f}s at style density band {band}"],
+                f"scene-cap-effective capacity {n_eff} "
+                f"cannot reach {0.8 * float(requested_len):.1f}s at style density "
+                f"band {band}"],
             "note": (f"requested {float(requested_len):.0f}s: max achievable "
-                     f"~{delivered_total:.1f}s at {style} density (band {band}) "
-                     f"with {audit.get('n_candidates')} clean candidates and the "
+                     f"~{delivered_total:.1f}s at {style} density (band {band}); "
+                     f"capacity {n_eff} scene-capped segments ({n_cap} clean candidates "
+                     f"in {n_clusters} candidate-bearing clusters x cap {max_per_scene}); "
                      f"declared relaxations applied"),
         }
         print(f"[plan] TARGET IMPOSSIBILITY: {audit['target_impossible']['note']}",

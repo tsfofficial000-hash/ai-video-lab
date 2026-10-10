@@ -48,7 +48,8 @@ def pick_hook(transcript, beats, style):
 
 
 def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
-                    luma_cache=None, transcript=None, reports_dir=None):
+                    luma_cache=None, transcript=None, reports_dir=None,
+                    requested_len=None):
     """Reuse proven montage timeline logic; emit engine-compatible timeline.json.
     D3: selection is forward-only, luma-gated, overlap-free (see selection.Selector).
     `luma` = optional [{t,y}] profile; when absent it is computed from the source
@@ -87,28 +88,80 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
 
     n_target = max(6, int(round(target_len / base_out)))
 
-    sel = Selector(beats_list, dur, luma=luma, min_y=36.0)
-
     # ---- scarcity-aware sizing (G3 no-reuse vs G7 band vs target_len) ----
-    # When clean candidates cannot fill the target at the style's density,
-    # hold cps inside the band by solving out_dur from the capacity equation
-    # and retiming segments by the resulting small factor. Never wrap, never
-    # duplicate beyond the <=0.3s crossfade-hidden overlap (G3).
+    # E4: the requested duration must never shrink SILENTLY. Ladder of DECLARED
+    # relaxations, then an honest impossibility note:
+    #   L0 normal params (luma floor 36, scarcity margin 1.08)
+    #   L1 scarcity cps margin 1.08 -> 1.05 -> 1.00 (cps band lower edge)
+    #   L2 luma floor 36 -> 30 (max -6, logged reason)
+    #   L3 still short -> target_impossible note (max achievable, style density)
+    requested = requested_len if requested_len else target_len
+    goal = 0.80 * float(requested)
+    relaxations = []
+    reasons = []
+    sc_margin = 1.08
+    min_y = 36.0
+
+    def _predict_total(n_cap_, margin_, base_out_, tgt_):
+        n_tgt = max(6, int(round(tgt_ / base_out_)))
+        if not n_cap_:
+            return 0.0, True
+        if n_cap_ * base_out_ < tgt_ * 0.95 and n_tgt > n_cap_:
+            return n_cap_ / (band[0] * margin_), True
+        return min(tgt_, n_tgt * base_out_), False
+
+    sel = Selector(beats_list, dur, luma=luma, min_y=min_y)
     n_cap = len(sel.candidates)
-    scarcity = bool(sel.candidates) and n_cap * base_out < target_len * 0.95 \
-        and n_target > n_cap
+    pred, scarcity = _predict_total(n_cap, sc_margin, base_out, target_len)
+    if pred < goal and scarcity:
+        # L1: cps margin toward the band's lower edge (declared)
+        for m, label in ((1.05, "cps_margin_1.05"), (1.00, "cps_band_lower_edge")):
+            if n_cap / (band[0] * m) >= goal:
+                relaxations.append({"kind": label, "from": sc_margin, "to": m,
+                                    "reason": f"reach {goal:.1f}s (80% of "
+                                              f"{float(requested):.0f}s requested)"})
+                sc_margin = m
+                pred = n_cap / (band[0] * m)
+                break
+    if pred < goal and luma and min_y > 30.0:
+        # L2: widen the luma floor (max -6 points, declared) and re-count
+        sel2 = Selector(beats_list, dur, luma=luma, min_y=30.0)
+        n_cap2 = len(sel2.candidates)
+        for m in (sc_margin, 1.05, 1.00):
+            if n_cap2 / (band[0] * m) >= goal:
+                relaxations.append({"kind": "luma_floor", "from": min_y, "to": 30.0,
+                                    "reason": f"candidate capacity {n_cap}->{n_cap2}; "
+                                              f"reach {goal:.1f}s"})
+                if m != sc_margin:
+                    relaxations.append({"kind": "cps_band_lower_edge", "from": sc_margin,
+                                        "to": m, "reason": "combined with luma floor"})
+                sel, n_cap, scarcity = sel2, n_cap2, True
+                min_y, sc_margin = 30.0, m
+                pred = n_cap2 / (band[0] * m)
+                break
+        else:
+            if n_cap2 > n_cap:
+                relaxations.append({"kind": "luma_floor", "from": min_y, "to": 30.0,
+                                    "reason": f"candidate capacity {n_cap}->{n_cap2} "
+                                              f"(still short)"})
+                sel, n_cap, min_y = sel2, n_cap2, 30.0
+            pred, scarcity = _predict_total(n_cap, sc_margin, base_out, target_len)
+            if pred < goal:
+                reasons.append(f"{n_cap} clean candidates cannot fill "
+                               f"{float(requested):.0f}s at style density band {band} "
+                               f"even after the declared relaxations")
     if scarcity:
         # Scarcity solver: n candidates is the hard capacity (G3 no-reuse), so
         # every candidate hosts one segment. Sizing contract:
-        #   cps = n / (n*out - (n-1)*fade) >= band[0]*1.05  (margin for rounding)
+        #   cps = n / (n*out - (n-1)*fade) >= band[0]*margin  (ladder-decided)
         #   src_span = typical candidate spacing + 0.28s deliberate overlap,
-        #   hidden inside the 0.18s crossfades (pick() enforces <=0.3s real)
+        #   hidden inside the crossfades (pick() enforces <=0.3s real)
         # out_dur is solved from the cps constraint; speed lands within +/-7%
         # of 1.0 (imperceptible retiming).
         n_target = min(n_target, n_cap)
-        print(f"[plan] scarcity solver: {n_cap} candidates cannot fill "
-              f"{target_len:.0f}s at {1.0/base_out:.2f}cps -> full-capacity walk "
-              f"with solved out_dur", flush=True)
+        print(f"[plan] scarcity solver: {n_cap} candidates fill only ~{pred:.1f}s "
+              f"of the {float(requested):.0f}s request at {1.0/base_out:.2f}cps "
+              f"(margin {sc_margin}) -> full-capacity walk", flush=True)
 
     segs = []
     cursor = sel.candidates[0] if sel.candidates else 1.5
@@ -124,7 +177,7 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
             # Renderer law: output = min(out_dur, src/speed) -> we store
             # src_dur=0.73 explicitly and speed=src/out (<=1, subtle slow-mo)
             # so src/speed == out_dur exactly: no trim waste, spans consistent.
-            out_dur = round(min(max((n_cap / (band[0] * 1.08)
+            out_dur = round(min(max((n_cap / (band[0] * sc_margin)
                                      + (n_cap - 1) * 0.18) / n_cap, 0.4), 5.0), 3)
         elif k == 0:
             out_dur = base_out * 1.9
@@ -272,6 +325,30 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     audit["section_flash_times"] = section_times
     audit["cut_density_target_cps"] = round(cps_target, 2)
     audit["bar_map"] = bar_census
+    audit["relaxations"] = relaxations
+
+    # E4: honest impossibility contract - measured delivered vs requested
+    delivered_total = sum(s["out_dur"] for s in segs) - sum(
+        s["transition_after"]["dur"] for s in segs[:-1])
+    if requested_len and delivered_total < 0.80 * float(requested_len):
+        audit["target_impossible"] = {
+            "requested": round(float(requested_len), 2),
+            "delivered": round(delivered_total, 2),
+            "max_achievable": round(delivered_total, 2),
+            "style": style,
+            "cuts_band": band,
+            "n_candidates": audit.get("n_candidates"),
+            "relaxations": relaxations,
+            "reasons": reasons or [
+                f"clean-candidate capacity {audit.get('n_candidates')} cannot reach "
+                f"{0.8 * float(requested_len):.1f}s at style density band {band}"],
+            "note": (f"requested {float(requested_len):.0f}s: max achievable "
+                     f"~{delivered_total:.1f}s at {style} density (band {band}) "
+                     f"with {audit.get('n_candidates')} clean candidates and the "
+                     f"declared relaxations applied"),
+        }
+        print(f"[plan] TARGET IMPOSSIBILITY: {audit['target_impossible']['note']}",
+              flush=True)
     return segs, audit
 
 
@@ -295,13 +372,15 @@ def main():
 
     dur = meta["duration"]
     lo, hi = style_cfg.get("target_range", [25, 60])
-    target = a.target_len or max(lo, min(hi, dur * 0.55))
+    requested_len = a.target_len or max(lo, min(hi, dur * 0.55))   # the user ask, before clamps
+    target = requested_len
     target = min(target, max(10, dur - 2))
 
     source_meta = dict(meta, path=os.environ.get("CF_SOURCE_PATH") or meta.get("path"))
     segments, audit = build_timeline(source_meta, beats, style_cfg, a.style, target,
                                      luma_cache=os.path.join(a.reports, "luma.json"),
-                                     transcript=transcript, reports_dir=a.reports)
+                                     transcript=transcript, reports_dir=a.reports,
+                                     requested_len=requested_len)
     total = sum(s["out_dur"] for s in segments) - sum(
         s["transition_after"]["dur"] for s in segments[:-1])
     cps = round(len(segments) / total, 2) if total else 0.0
@@ -368,6 +447,19 @@ def main():
     plan["music_via"] = music_meta.get("via")
     if music_meta.get("attribution_required") and music_meta.get("credit"):
         plan["music_credit"] = music_meta["credit"]
+    # E4: target-fidelity contract fields (gate G11 reads these)
+    plan["requested_duration"] = round(float(requested_len), 2)
+    plan["duration_chain"] = {
+        "requested": round(float(requested_len), 2),
+        "style_range": [lo, hi],
+        "after_source_cap": round(target, 2),
+        "delivered": round(total, 2),
+    }
+    # always declare the relaxation record - empty means "tried, none needed",
+    # the impossibility note carries the reasons when none could help
+    plan["relaxations"] = audit.get("relaxations") or []
+    if audit.get("target_impossible"):
+        plan["target_impossible_note"] = audit["target_impossible"]
     jdump(plan, f"{a.reports}/edit_plan.json")
     # engine-compatible timeline (proven montage code path)
     jdump({"meta": {"src_w": meta["width"], "src_h": meta["height"],

@@ -264,6 +264,22 @@ def main():
                + "; ".join(f"{k}={(v or {}).get('license')}" for k, v in entries.items())
                ) if entries else "manifest empty/missing"
 
+    # ---- G11 TARGET FIDELITY (E4): delivered >= 0.80 x requested ----
+    # Silent shrink is RED. An honest target_impossible_note (with max
+    # achievable + declared relaxations) is the only alternative pass.
+    requested = plan.get("requested_duration")
+    impossible = plan.get("target_impossible_note")
+    if requested:
+        ratio = dur / float(requested)
+        g11 = ratio >= 0.80 or bool(impossible)
+        g11_val = (f"delivered={dur:.1f}s requested={float(requested):.1f}s "
+                   f"fidelity={100 * ratio:.0f}% (need >=80%)")
+        if impossible:
+            note_txt = impossible.get("note") if isinstance(impossible, dict) else str(impossible)
+            g11_val += f" IMPOSSIBILITY DECLARED: {note_txt}"
+    else:
+        g11, g11_val = False, "requested_duration missing from plan - not measurable (RED)"
+
     gates = {
         "G1_black": {"green": bool(g1),
                      "value": f"black={core_black:.2f}s ({100*core_black/max(dur,0.1):.1f}% of {dur:.1f}s) +tail {tail_black:.2f}s, {longest_val}",
@@ -287,6 +303,8 @@ def main():
                        "artifact": os.path.relpath(lat_p) if lat_p else "latency.json (stage-11)"},
         "G10_free": {"green": bool(g10), "value": g10_val,
                      "artifact": os.path.relpath(man_p) if man_p else "MISSING"},
+        "G11_target_fidelity": {"green": bool(g11), "value": g11_val,
+                                "artifact": os.path.relpath(plan_p) if plan_p else "MISSING"},
     }
     pending = [k for k, v in gates.items() if v["green"] is None]
     verdict = all(v["green"] for v in gates.values() if v["green"] is not None)

@@ -50,6 +50,13 @@ if cw <= iw * 0.97 and ch <= ih * 0.97:   # meaningful bars only
     print(f"active_crop: {cw}x{ch} (source {iw}x{ih})")
 PY
 fi
+# per-scene bar map (E1): cropdetect per-frame on the proxy + scene segmentation
+# -> reports/bar_map.json; edit_plan attaches a segment-level active_crop so
+# scope AND full-frame shots render bar-free (meta-level crop stays for compat)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+python3 "$SCRIPT_DIR/bar_map.py" --proxy "$WD/media/proxy.mp4" \
+  --out "$WD/reports/bar_map.json" --meta "$WD/reports/source_metadata.json" \
+  || echo "WARN: bar map failed - segments fall back to meta-level active_crop"
 # audio wav for analysis
 ffmpeg -v error -y -i "$SRC" -vn -ac 1 -ar 22050 "$WD/media/audio.wav"
 # contact sheet: 4x4 thumbnails

@@ -24,12 +24,21 @@ def even(x):
     return x + (x % 2)
 
 
-def fg_geometry(meta, zoom):
+def seg_crop(meta, seg):
+    """Active picture area for THIS segment (defect E1): segment-level
+    active_crop (per-scene bar map, source-res w/h/x/y) overrides the
+    meta-level one (first-90-frames cropdetect, kept for back-compat)."""
+    ac = seg.get("active_crop") or meta.get("active_crop")
+    return ac
+
+
+def fg_geometry(meta, seg, zoom):
     """Foreground window geometry per vertical mode.
     cover_crop/smart_crop -> fill canvas (full-bleed, crop = canvas size from a
     zoomed fill); blur_fill -> contain-fit (fallback layout).
-    Geometry uses the ACTIVE picture area when letterbox was detected."""
-    ac = meta.get("active_crop")
+    Geometry uses THIS SEGMENT's active picture area when the bar map gave one,
+    else the meta-level one, else the raw frame."""
+    ac = seg_crop(meta, seg)
     sw, sh = (ac["w"], ac["h"]) if ac else (meta["src_w"], meta["src_h"])
     ow, oh = meta["out_w"], meta["out_h"]
     mode = meta.get("vertical", "cover_crop")
@@ -54,14 +63,23 @@ def crop_origin(meta, seg, fw, fh, cw, ch):
     return max(0, x), max(0, y)
 
 
+def pre_crop_filter(ac):
+    """Pre-crop expression for an active-region dict. x/y offsets from the
+    per-scene bar map when present, else centered (legacy meta crop)."""
+    if "x" in ac and "y" in ac:
+        return f"crop={ac['w']}:{ac['h']}:{ac['x']}:{ac['y']},"
+    return f"crop={ac['w']}:{ac['h']}:(iw-{ac['w']})/2:(ih-{ac['h']})/2,"
+
+
 def seg_filter(meta, seg):
-    fw, fh, cw, ch = fg_geometry(meta, seg["zoom"])
+    fw, fh, cw, ch = fg_geometry(meta, seg, seg["zoom"])
     ow, oh = meta["out_w"], meta["out_h"]
     fps = meta["out_fps"]
     mode = meta.get("vertical", "cover_crop")
-    # baked-in letterbox: pre-crop to the detected active picture area (D: spec 2.2)
-    ac = meta.get("active_crop")
-    pre = f"crop={ac['w']}:{ac['h']}:(iw-{ac['w']})/2:(ih-{ac['h']})/2," if ac else ""
+    # baked-in letterbox: pre-crop to THIS SEGMENT's detected active picture
+    # area (E1: per-scene bar map; falls back to the meta-level crop)
+    ac = seg_crop(meta, seg)
+    pre = pre_crop_filter(ac) if ac else ""
     # uniform speed handling: decode 2x fps, rescale pts, resample to out fps
     chain = f"fps={fps*2},setpts=PTS/{seg['speed']:.6f},fps={fps}"
     if mode in ("cover_crop", "smart_crop"):
@@ -72,8 +90,10 @@ def seg_filter(meta, seg):
             f"trim=duration={seg['out_dur']:.3f},setpts=PTS-STARTPTS[v]"
         )
     else:  # blur_fill fallback: lifted bg, no vignette, no grade (D4)
+        # E1: both bg and fg come from the segment's active area - bars must
+        # not ride into the blurred background either
         v = (
-            f"[0:v]null,format=rgba,split=2[bgsrc][fgsrc];"
+            f"[0:v]null,{pre}format=rgba,split=2[bgsrc][fgsrc];"
             f"[bgsrc]scale={ow}:{oh}:force_original_aspect_ratio=increase,"
             f"crop={ow}:{oh},boxblur=16:2,eq=brightness=0.00:saturation=0.90[bg];"
             f"[fgsrc]{chain},scale={fw}:{fh},crop={cw}:{ch}:(iw-{cw})/2:(ih-{ch})/2,setsar=1[fg];"

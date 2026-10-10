@@ -1,10 +1,7 @@
 {
  "style": "bold_highlight",
- "events": 3,
- "cues": [
-  16.45,
-  17.33
- ],
+ "events": 1,
+ "cues": [],
  "font_caption": "Montserrat",
  "font_hook": "Anton",
  "fontsize": 99,
@@ -26,24 +23,6 @@
    "placement": "y=493 size=150 lines=['WHAT BRINGS YOU', 'TO THE LAND']",
    "reason": "hook_y_center per safe_zones, width-fitted",
    "face": null
-  },
-  {
-   "cue": 16.45,
-   "element": "caption",
-   "placement": "marginV=291",
-   "lines": 2,
-   "keyword": "searching",
-   "face": null,
-   "reason": "bottom_safe_zone"
-  },
-  {
-   "cue": 17.33,
-   "element": "caption",
-   "placement": "marginV=291",
-   "lines": 2,
-   "keyword": "searching",
-   "face": null,
-   "reason": "bottom_safe_zone"
   }
  ]
 }

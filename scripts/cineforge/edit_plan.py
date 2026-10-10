@@ -4,12 +4,29 @@ Style-aware: hook selection, beat/scene aligned cuts, pacing per mood, ducking p
 import argparse
 import json
 import os
+import sys
 
 REPO_ROOT = __import__("os").path.abspath(
     __import__("os").path.join(__file__, "..", "..", ".."))
 from utils import jdump, jload, record_stage
 from selection import Selector, luma_profile_ffmpeg
 import time
+
+
+def load_bar_map(reports_dir, source_meta):
+    """E1: per-scene bar map produced at ingest (make_proxy.sh -> bar_map.py).
+    Falls back to the legacy meta-level active_crop when no map exists."""
+    p = os.path.join(reports_dir or "reports", "bar_map.json")
+    if os.path.isfile(p):
+        try:
+            return jload(p, {})
+        except Exception:
+            pass
+    ac = source_meta.get("active_crop")
+    if ac:
+        return {"src_w": source_meta.get("width"), "src_h": source_meta.get("height"),
+                "scenes": [], "meta_crop": ac, "legacy": True}
+    return None
 
 
 def pick_hook(transcript, beats, style):
@@ -31,11 +48,12 @@ def pick_hook(transcript, beats, style):
 
 
 def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
-                    luma_cache=None, transcript=None):
+                    luma_cache=None, transcript=None, reports_dir=None):
     """Reuse proven montage timeline logic; emit engine-compatible timeline.json.
     D3: selection is forward-only, luma-gated, overlap-free (see selection.Selector).
     `luma` = optional [{t,y}] profile; when absent it is computed from the source
-    (cached at luma_cache / reports/luma.json) so the gate always has real data."""
+    (cached at luma_cache / reports/luma.json) so the gate always has real data.
+    reports_dir: where the ingest bar map (E1) lives."""
     dur = source_meta["duration"]
     src_path = source_meta.get("path")
     if luma is None:
@@ -195,6 +213,26 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
         for j, s in enumerate(segs):
             s["i"] = j
 
+    # ---- E1: per-segment active_crop from the ingest-time bar map ----------
+    # A vertical editor that ships letterbox bars inside a full-bleed claim is
+    # not top-notch: scope shots and full-frame shots each get their own crop.
+    barmap = load_bar_map(reports_dir, source_meta)
+    bar_census = {"map": bool(barmap), "attached": 0, "scenes": 0}
+    if barmap:
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import bar_map as _barmap
+            bar_census["attached"] = _barmap.attach_segments(segs, barmap)
+            bar_census["scenes"] = len(barmap.get("scenes") or [])
+            bar_census["legacy"] = bool(barmap.get("legacy"))
+            print(f"[plan] bar map: {bar_census['scenes']} scenes, "
+                  f"{bar_census['attached']}/{len(segs)} segments carry their own "
+                  f"active_crop", flush=True)
+        except Exception as e:
+            print(f"[plan] WARN bar map attach failed ({type(e).__name__}: {e}) - "
+                  f"falling back to meta-level crop only", flush=True)
+            bar_census["error"] = str(e)[:120]
+
     soft = style_cfg.get("transitions") == "soft_fades"
     per_section = max(6, len(segs) // 3)
     # spec 2.4: hard cut default (0.05 pseudo = 1-2 frames), fade <= 0.18,
@@ -233,6 +271,7 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     audit["beat_alignment_ms"] = beat_align_ms
     audit["section_flash_times"] = section_times
     audit["cut_density_target_cps"] = round(cps_target, 2)
+    audit["bar_map"] = bar_census
     return segs, audit
 
 
@@ -262,7 +301,7 @@ def main():
     source_meta = dict(meta, path=os.environ.get("CF_SOURCE_PATH") or meta.get("path"))
     segments, audit = build_timeline(source_meta, beats, style_cfg, a.style, target,
                                      luma_cache=os.path.join(a.reports, "luma.json"),
-                                     transcript=transcript)
+                                     transcript=transcript, reports_dir=a.reports)
     total = sum(s["out_dur"] for s in segments) - sum(
         s["transition_after"]["dur"] for s in segments[:-1])
     cps = round(len(segments) / total, 2) if total else 0.0

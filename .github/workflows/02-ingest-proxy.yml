@@ -23,6 +23,7 @@ jobs:
           name: stage-02-ingest
           path: |
             reports/source_metadata.json
+            reports/bar_map.json
             media/proxy.mp4
             media/audio.wav
             media/contact.jpg

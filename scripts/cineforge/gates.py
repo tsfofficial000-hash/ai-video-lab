@@ -53,6 +53,52 @@ def measure_luma(video, dur):
     return med, nb, blown, sum(first1) / len(first1), len(ys)
 
 
+def measure_edge_bands(video, fps=2, band=0.08):
+    """G4 (E2, measured): 2fps sample; mean luma of the top 8% and bottom 8%
+    bands of every sample -> [{"t", "top", "bottom"}].
+    Letterbox bars ride through as band means near 16-18; a genuinely full-bleed
+    crop keeps both bands >= 25 on >= 95% of samples."""
+    bands = []
+    for which, vf in (("top", f"crop=iw:ih*{band:.2f}:0:0"),
+                      ("bottom", f"crop=iw:ih*{band:.2f}:0:ih*{1-band:.2f}")):
+        p = sh(["ffmpeg", "-hide_banner", "-i", video, "-vf",
+                f"fps={fps},{vf},signalstats,metadata=print:"
+                f"key=lavfi.signalstats.YAVG:file=-", "-f", "null", "-"])
+        vals = [float(m) for m in re.findall(r"YAVG=([\d.]+)", p.stdout or "")]
+        bands.append((which, vals))
+    tops, bots = bands[0][1], bands[1][1]
+    n = min(len(tops), len(bots))
+    return [{"t": i / float(fps), "top": tops[i], "bottom": bots[i]} for i in range(n)]
+
+
+def gate4(video, plan, dur):
+    """G4 layout, MEASURED (E2 - no more green-by-construction).
+    Returns (green, value, detail dict)."""
+    vertical = plan.get("vertical_plan", plan.get("vertical", "cover_crop"))
+    fg_ratio = plan.get("fg_height_ratio")
+    tail_fade = max(0.4, 0.02 * dur)   # deliberate outro fadeblack is G1's budget
+    if vertical in ("cover_crop", "smart_crop"):
+        samples = measure_edge_bands(video)
+        if not samples:
+            return False, f"vertical={vertical} edge-band scan produced no samples", {}
+        core = [s for s in samples if s["t"] < dur - tail_fade - 0.25] or samples
+        dark = [s for s in core if min(s["top"], s["bottom"]) < 25]
+        bar_fraction = len(dark) / float(len(core))
+        green = bar_fraction <= 0.05 and len(core) >= 8
+        val = (f"vertical={vertical} bar_fraction={bar_fraction:.3f} "
+               f"({len(dark)}/{len(core)} dark edge samples, need <=5%, "
+               f"bands=top8/bottom8% Y>=25, tail-fade {tail_fade:.1f}s excluded)")
+        return green, val, {"bar_fraction": round(bar_fraction, 4),
+                            "n_samples": len(core), "n_dark": len(dark)}
+    if vertical == "blur_fill":
+        if fg_ratio is None:
+            return False, f"vertical=blur_fill fg_ratio missing - not measurable", {}
+        green = fg_ratio >= 0.55
+        return (green, f"vertical=blur_fill fg={100*fg_ratio:.0f}% (need >=55%)",
+                {"fg_ratio": fg_ratio})
+    return False, f"vertical={vertical} not measurable", {}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--video", required=True)
@@ -132,17 +178,8 @@ def main():
               f"droppedLuma={audit.get('n_dropped_luma')} "
               f"selected={audit.get('n_selected')}")
 
-    # ---- G4 LAYOUT: full-bleed modes by construction; blur_fill needs fg>=55% ----
-    vertical = plan.get("vertical_plan", plan.get("vertical", "cover_crop"))
-    fg_ratio = plan.get("fg_height_ratio")
-    if vertical in ("cover_crop", "smart_crop"):
-        g4, g4_val = True, f"vertical={vertical} fg=full-bleed"
-    elif vertical == "blur_fill" and fg_ratio is not None:
-        g4 = fg_ratio >= 0.55
-        g4_val = f"vertical=blur_fill fg={100*fg_ratio:.0f}% (need >=55%)"
-    else:
-        g4 = False
-        g4_val = f"vertical={vertical} fg_ratio={fg_ratio} not measurable"
+    # ---- G4 LAYOUT: MEASURED edge bands (E2) - no green-by-construction ----
+    g4, g4_val, g4_detail = gate4(a.video, plan, dur)
 
     # ---- G5 TYPO: OFL fonts + captions pixel-test + per-cue decisions ----
     fonts_ok = bool(fonts) and (fonts.get("all_required_ok")
@@ -222,7 +259,8 @@ def main():
         "G3_selection": {"green": bool(g3), "value": g3_val,
                          "artifact": os.path.relpath(audit_p) if audit_p else "MISSING"},
         "G4_layout": {"green": bool(g4), "value": g4_val,
-                      "artifact": "edit_plan.json vertical_plan"},
+                      "artifact": f"edge-band scan of final.mp4 + edit_plan.json vertical_plan",
+                      **({"detail": g4_detail} if g4_detail else {})},
         "G5_typography": {"green": bool(g5), "value": g5_val,
                           "artifact": f"{os.path.relpath(fonts_p) if fonts_p else 'MISSING'} + {os.path.relpath(cap_p) if cap_p else 'captions_report MISSING'}"},
         "G6_audio": {"green": bool(g6), "value": g6_val,

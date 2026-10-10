@@ -8,6 +8,25 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 
 
+def pick_font():
+    """N3: hermetic font selection for probes - CF_FONTS_DIR (fetch_fonts.py
+    output) first, then the repo's media/fonts, then system DejaVu."""
+    env_dir = os.environ.get("CF_FONTS_DIR")
+    cands = []
+    if env_dir:
+        cands += [os.path.join(env_dir, f) for f in
+                  ("Montserrat-Bold.ttf", "Anton-Regular.ttf")]
+    media = os.path.join(REPO, "media", "fonts")
+    cands += [os.path.join(media, f) for f in
+              ("Montserrat-Bold.ttf", "Anton-Regular.ttf")]
+    cands += ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+    for c in cands:
+        if os.path.isfile(c):
+            return c
+    return cands[-1]
+
+
 def cf_path(*parts):
     return os.path.join(REPO, *parts)
 
@@ -30,8 +49,7 @@ def synth_video(path, dur=4.0, w=540, h=960, bright=True, drawtext=None):
         color = "color=c=black:s={w}x{h}:d={dur},format=yuv420p".format(w=w, h=h, dur=dur)
     vf = color
     if drawtext:
-        font = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-        vf += (",drawtext=fontfile=" + font + ":text='" + drawtext +
+        vf += (",drawtext=fontfile=" + pick_font() + ":text='" + drawtext +
                "':fontsize=72:fontcolor=white:x=(w-tw)/2:y=h*0.72:box=1:boxcolor=black@0.5")
     cmd = ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", vf,
            "-f", "lavfi", "-i", f"sine=frequency=330:duration={dur}",

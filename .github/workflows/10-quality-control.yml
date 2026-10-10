@@ -28,8 +28,13 @@ jobs:
           CR=$(python3 -c "import glob;c=glob.glob('final/**/captions_report.json',recursive=True);print(c[0] if c else '')")
           [ -n "$CR" ] && cp "$CR" reports/captions_report.json || echo "WARN: captions_report.json not in stage-09 artifact"
           echo "final=$FV plan=$PL"
+          ASS=$(python3 -c "import glob;c=glob.glob('final/**/captions.ass',recursive=True);print(c[0] if c else '')")
+          FD=$(python3 -c "import os;d='media/fonts';print(d if os.path.isdir(d) and os.listdir(d) else '')")
+          QCARGS=""
+          [ -n "$ASS" ] && QCARGS="--ass ../../$ASS"
+          [ -n "$FD" ] && QCARGS="$QCARGS --fontsdir ../../$FD"
           cd scripts/cineforge && python3 qc.py --video "../../$FV" \
-            --plan "../../$PL" --reports ../../reports
+            --plan "../../$PL" --reports ../../reports $QCARGS
       - name: Gate aggregation (G1-G10 with numbers)
         run: |
           set -e

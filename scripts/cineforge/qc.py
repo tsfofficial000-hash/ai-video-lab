@@ -4,6 +4,7 @@ Checks: existence, probe, duration, resolution, fps, audio, loudness, black fram
 silence, captions presence, size, hook motion. Repairs: remux/rescale/renormalize."""
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -50,7 +51,56 @@ def caption_band_white_ratio(path, t, band=(0.60, 0.92), white=232):
     return (float(m.group(1)) / 255.0) if m else 0.0
 
 
-def check(path, plan, reports):
+def _band_edge_density(path, t, band, vf_prefix=""):
+    """Mean sobel edge magnitude of the caption band at time t."""
+    vf = (vf_prefix + "format=gray,"
+          f"crop=iw:ih*{band[1]-band[0]:.2f}:0:ih*{band[0]:.2f},"
+          "sobel,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-")
+    p = subprocess.run(["ffmpeg", "-hide_banner", "-ss", str(t), "-i", path,
+                        "-frames:v", "1", "-vf", vf, "-f", "null", "-"],
+                       capture_output=True, text=True)
+    m = re.search(r"YAVG=([\d.]+)", p.stdout or "")
+    return float(m.group(1)) if m else 0.0
+
+
+def differential_caption_check(video, ass, cues, fontsdir=None,
+                               band=(0.60, 0.92), max_rel_delta=0.25):
+    """N1: DIFFERENTIAL caption burn-existence (replaces the absolute white
+    ratio, which false-passes on bright in-band content).
+
+    Method: re-burn the ASS onto the final at each cue time and measure the
+    sobel edge-density delta in the caption band vs the untouched frame:
+      - text already burned -> re-burn is ~idempotent -> tiny relative delta
+        -> PASS (measured: 4% on crf23 text)
+      - text absent -> the burn injects full glyph edges -> huge delta
+        -> FAIL (measured: 595%; the bright band itself contributes 0 delta)
+    """
+    if not ass or not os.path.isfile(ass):
+        return {"passed": False, "deltas": [], "rel_deltas": [], "max_delta": 0.0,
+                "max_rel_delta": 0.0, "threshold": max_rel_delta,
+                "reason": "ass missing - differential not measurable"}
+    if not any("Dialogue" in ln for ln in open(ass, errors="ignore")):
+        return {"passed": False, "deltas": [], "rel_deltas": [], "max_delta": 0.0,
+                "max_rel_delta": 0.0, "threshold": max_rel_delta,
+                "reason": "ass has no Dialogue events - nothing was ever burned"}
+    burn_vf = f"ass={ass}" + (f":fontsdir={fontsdir}" if fontsdir else "") + ","
+    deltas, rels = [], []
+    for t in list(cues)[:3]:
+        nob = _band_edge_density(video, t, band)
+        brn = _band_edge_density(video, t, band, burn_vf)
+        d = abs(brn - nob)
+        deltas.append(round(d, 3))
+        rels.append(d / max(nob, 5.0))
+    n_changed = sum(1 for r in rels if r >= max_rel_delta)
+    return {"passed": bool(rels) and n_changed == 0,
+            "deltas": deltas,
+            "rel_deltas": [round(r, 4) for r in rels],
+            "max_delta": max(deltas) if deltas else 0.0,
+            "max_rel_delta": round(max(rels), 4) if rels else 0.0,
+            "threshold": max_rel_delta}
+
+
+def check(path, plan, reports, ass=None, fontsdir=None):
     p = ffprobe_json(path)
     v = next((s for s in p["streams"] if s["codec_type"] == "video"), None)
     a = next((s for s in p["streams"] if s["codec_type"] == "audio"), None)
@@ -136,7 +186,8 @@ def check(path, plan, reports):
 
     ok("size_reasonable", size / 1e6 < 220, f"{size/1e6:.1f}MB < 220MB")
 
-    # G5: captions burn-existence pixel test (D6: was a tautology)
+    # G5: captions burn-existence (D6 pixel test, N1 differential upgrade:
+    # bright in-band content can no longer false-pass the absolute ratio)
     if not plan.get("caption_style"):
         ok("captions_burned", True, "n/a (plan has no caption_style)")
     else:
@@ -153,29 +204,46 @@ def check(path, plan, reports):
             win = max(0.1, dur - fb - 0.25)
             cues = [min(max(c, 0.1), win) for c in cues][:3]
             cues = sorted(set(cues))
-            ratios = [(c, caption_band_white_ratio(path, c)) for c in cues]
-            if len(ratios) < 3:
-                # sparse-speech edit: pad the sample set with hook-card band
-                # samples so the burn-existence test stays 3-point measurable
-                for t in (0.8, 1.6):
-                    t2 = min(t, dur - 0.1)
-                    if all(abs(t2 - c) > 0.15 for c, _ in ratios):
-                        ratios.append((t2, caption_band_white_ratio(path, t2, band=(0.16, 0.52))))
-            hits = [(c, r) for c, r in ratios if r >= 0.003]
-            ok("captions_burned", len(hits) >= 2,
-               f"white-pixel ratio at cues: " + ", ".join(f"{c}s={r:.3%}" for c, r in ratios) +
-               f" ({len(hits)}/{len(ratios)} samples show burned text)")
+            diff = differential_caption_check(path, ass, cues, fontsdir=fontsdir)
+            if ass and os.path.isfile(ass):
+                ok("captions_burned", bool(diff["passed"]),
+                   f"differential re-burn edge delta at cues: "
+                   + ", ".join(f"{c}s={r:.3f}" for c, r in zip(cues, diff["deltas"]))
+                   + f" (max rel {diff['max_rel_delta']:.3f} vs threshold "
+                     f"{diff['threshold']}; small delta = text already burned)")
+            else:
+                ratios = [(c, caption_band_white_ratio(path, c)) for c in cues]
+                if len(ratios) < 3:
+                    # sparse-speech edit: pad the sample set with hook-card band
+                    # samples so the burn-existence test stays 3-point measurable
+                    for t in (0.8, 1.6):
+                        t2 = min(t, dur - 0.1)
+                        if all(abs(t2 - c) > 0.15 for c, _ in ratios):
+                            ratios.append((t2, caption_band_white_ratio(path, t2, band=(0.16, 0.52))))
+                hits = [(c, r) for c, r in ratios if r >= 0.003]
+                ok("captions_burned", len(hits) >= 2,
+                   f"absolute white-pixel ratio (differential n/a - no ass): "
+                   + ", ".join(f"{c}s={r:.3%}" for c, r in ratios) +
+                   f" ({len(hits)}/{len(ratios)} samples show burned text)")
         else:
             # no speech cues in this edit (sparse-dialogue source): the burned
-            # typography that MUST exist is the hook card -> pixel-test its band
+            # typography that MUST exist is the hook card -> differential on
+            # the hook band, falling back to the absolute ratio when no ass
             hook_t = [max(0.4, min(dur - 0.1, t)) for t in (0.8, 1.6)]
             band = (max(0.05, (plan.get("hook", {}).get("seconds") or [0, 2.5])[0] * 0 + 0.16), 0.52)
-            ratios = [(c, caption_band_white_ratio(path, c, band=band)) for c in hook_t]
-            hits = [(c, r) for c, r in ratios if r >= 0.003]
-            ok("captions_burned", len(hits) >= 1,
-               "hook-card pixel test (no speech cues): " +
-               ", ".join(f"{c}s={r:.3%}" for c, r in ratios) +
-               f" ({len(hits)}/2 hook samples show burned text, band {band})")
+            if ass and os.path.isfile(ass):
+                diff = differential_caption_check(path, ass, hook_t, fontsdir=fontsdir,
+                                                  band=band)
+                ok("captions_burned", bool(diff["passed"]),
+                   "hook-card differential re-burn test (no speech cues): "
+                   f"rel deltas {diff['rel_deltas']} (threshold {diff['threshold']})")
+            else:
+                ratios = [(c, caption_band_white_ratio(path, c, band=band)) for c in hook_t]
+                hits = [(c, r) for c, r in ratios if r >= 0.003]
+                ok("captions_burned", len(hits) >= 1,
+                   "hook-card pixel test (no speech cues): " +
+                   ", ".join(f"{c}s={r:.3%}" for c, r in ratios) +
+                   f" ({len(hits)}/2 hook samples show burned text, band {band})")
     return results, repairs, {"duration": dur, "size": size, "loudnorm": ln}
 
 
@@ -203,11 +271,15 @@ def main():
     ap.add_argument("--video", required=True)
     ap.add_argument("--plan", default="reports/edit_plan.json")
     ap.add_argument("--reports", default="reports")
+    ap.add_argument("--ass", default=None,
+                    help="captions.ass used by the differential burn test (N1)")
+    ap.add_argument("--fontsdir", default=None, help="fonts dir for the re-burn")
     a = ap.parse_args()
 
     t0 = time.time()
     plan = jload(a.plan, {})
-    results, repairs, extra = check(a.video, plan, a.reports)
+    results, repairs, extra = check(a.video, plan, a.reports, ass=a.ass,
+                                    fontsdir=a.fontsdir)
     failed = [r for r in results if not r["passed"]]
     status, path = ("pass", a.video)
     if failed:

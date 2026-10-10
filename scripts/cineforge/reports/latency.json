@@ -2,14 +2,14 @@
  "stages": [
   {
    "stage_name": "09a-captions",
-   "start_time": "2026-10-10T09:32:38+00:00",
-   "end_time": "2026-10-10T09:32:38+00:00",
+   "start_time": "2026-10-10T09:40:29+00:00",
+   "end_time": "2026-10-10T09:40:29+00:00",
    "duration_seconds": 0.0,
    "status": "success",
    "runner_os": "local",
    "cpu_cores_detected": 2,
    "memory_peak_estimate_gb": 4.1,
-   "disk_usage_estimate_gb": 9.2,
+   "disk_usage_estimate_gb": 9.1,
    "artifact_size_mb": null,
    "retries": 0,
    "bottleneck_detected": "",
@@ -17,5 +17,5 @@
    "optimization_result": ""
   }
  ],
- "updated_at": "2026-10-10T09:32:38+00:00"
+ "updated_at": "2026-10-10T09:40:29+00:00"
 }

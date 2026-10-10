@@ -1,0 +1,97 @@
+{
+ "stages": [
+  {
+   "stage_name": "09a-captions",
+   "start_time": "2026-10-08T11:02:36+00:00",
+   "end_time": "2026-10-08T11:02:36+00:00",
+   "duration_seconds": 0.0,
+   "status": "success",
+   "runner_os": "local",
+   "cpu_cores_detected": 2,
+   "memory_peak_estimate_gb": 4.1,
+   "disk_usage_estimate_gb": 9.4,
+   "artifact_size_mb": null,
+   "retries": 0,
+   "bottleneck_detected": "",
+   "optimization_applied": "",
+   "optimization_result": ""
+  }
+ ],
+ "wall_seconds": 391.8,
+ "max_job_setup_seconds": 26.0,
+ "jobs": [
+  {
+   "job": "stage0 / env",
+   "status": "success",
+   "wall_seconds": 20.0,
+   "setup_seconds": 15.0
+  },
+  {
+   "job": "stage1 / assets",
+   "status": "success",
+   "wall_seconds": 24.0,
+   "setup_seconds": 13.0
+  },
+  {
+   "job": "stage2 / ingest",
+   "status": "success",
+   "wall_seconds": 33.0,
+   "setup_seconds": 20.0
+  },
+  {
+   "job": "stage3 / audio",
+   "status": "success",
+   "wall_seconds": 27.0,
+   "setup_seconds": 21.0
+  },
+  {
+   "job": "stage5 / beats",
+   "status": "success",
+   "wall_seconds": 49.0,
+   "setup_seconds": 18.0
+  },
+  {
+   "job": "stage4 / transcribe",
+   "status": "success",
+   "wall_seconds": 39.0,
+   "setup_seconds": 26.0
+  },
+  {
+   "job": "stage6 / plan",
+   "status": "success",
+   "wall_seconds": 31.0,
+   "setup_seconds": 21.0
+  },
+  {
+   "job": "stage7 / mix",
+   "status": "success",
+   "wall_seconds": 24.0,
+   "setup_seconds": 14.0
+  },
+  {
+   "job": "stage8 / render",
+   "status": "success",
+   "wall_seconds": 90.0,
+   "setup_seconds": 24.0
+  },
+  {
+   "job": "stage9 / polish",
+   "status": "success",
+   "wall_seconds": 44.0,
+   "setup_seconds": 20.0
+  },
+  {
+   "job": "stage10 / qc",
+   "status": "success",
+   "wall_seconds": 36.0,
+   "setup_seconds": 20.0
+  },
+  {
+   "job": "stage11 / deliver",
+   "status": null,
+   "wall_seconds": null,
+   "setup_seconds": 16.0
+  }
+ ],
+ "note": "wall measured at delivery; upstream jobs complete before this job starts"
+}

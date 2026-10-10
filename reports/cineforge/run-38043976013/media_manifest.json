@@ -1,0 +1,21 @@
+{
+ "music": {
+  "license": "CC0 (public domain, archive.org licenseurl)",
+  "attribution_required": false,
+  "credit": "geometry_dash_1.9 - Pashok11 (http://creativecommons.org/publicdomain/mark/1.0/)",
+  "via": "archive_cc",
+  "title": "geometry_dash_1.9",
+  "url": "https://archive.org/download/geometry_dash_1.9/Geometry%20Dash%20OST/BaseAfterBase.mp3",
+  "safe_for_shorts": true,
+  "mood": "cinematic",
+  "license_url": "http://creativecommons.org/publicdomain/mark/1.0/",
+  "bytes": 1366130,
+  "identifier": "geometry_dash_1.9"
+ },
+ "source_video": {
+  "url": "source-v1",
+  "duration": 52.208333,
+  "license": "Blender Foundation CC-BY 4.0 (Sintel trailer, durian.blender.org; via source-v1 cache; attribution: (c) Blender Foundation | durian.blender.org)",
+  "safe_for_shorts": true
+ }
+}

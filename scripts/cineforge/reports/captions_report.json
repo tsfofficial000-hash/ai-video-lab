@@ -20,9 +20,12 @@
   {
    "cue": 0,
    "element": "hook_card",
-   "placement": "y=493 size=150 lines=['WHAT BRINGS YOU', 'TO THE LAND']",
-   "reason": "hook_y_center per safe_zones, width-fitted",
-   "face": null
+   "placement": "y=411 size=150 lines=['WHAT BRINGS YOU', 'TO THE LAND OF', 'DRAGONS']",
+   "reason": "hook_y_center per safe_zones, width-fit selected among complete candidates (E5)",
+   "face": null,
+   "candidates_considered": [
+    "WHAT BRINGS YOU TO THE LAND OF DRAGONS"
+   ]
   }
  ]
 }

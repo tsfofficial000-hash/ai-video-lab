@@ -24,7 +24,12 @@
       2.0
     ],
     "vertical": "cover_crop",
-    "transition_fade_max": 0.18
+    "transition_fade_max": 0.18,
+    "hook_moods": [
+      "LIKE NOTHING YOU HAVE SEEN",
+      "WAIT FOR THE DROP",
+      "THIS CHANGES EVERYTHING"
+    ]
   },
   "cinematic": {
     "target_range": [
@@ -47,7 +52,12 @@
       0.7
     ],
     "vertical": "cover_crop",
-    "transition_fade_max": 0.18
+    "transition_fade_max": 0.18,
+    "hook_moods": [
+      "EVERY FRAME HOLDS ITS BREATH",
+      "THE STORY STARTS HERE",
+      "WATCH WHAT FOLLOWS"
+    ]
   },
   "motivational": {
     "target_range": [
@@ -69,7 +79,12 @@
       1.4
     ],
     "vertical": "cover_crop",
-    "transition_fade_max": 0.18
+    "transition_fade_max": 0.18,
+    "hook_moods": [
+      "ONE DECISION CHANGES EVERYTHING",
+      "START BEFORE YOU ARE READY",
+      "NO MORE EXCUSES"
+    ]
   },
   "sad_emotional": {
     "target_range": [
@@ -92,7 +107,12 @@
       0.35
     ],
     "vertical": "cover_crop",
-    "transition_fade_max": 0.4
+    "transition_fade_max": 0.4,
+    "hook_moods": [
+      "SOME GOODBYES NEVER END",
+      "THE LAST GOOD DAY",
+      "IT WAS NEVER ENOUGH"
+    ]
   },
   "podcast_highlight": {
     "target_range": [
@@ -114,7 +134,12 @@
       0.2,
       0.5
     ],
-    "transition_fade_max": 0.18
+    "transition_fade_max": 0.18,
+    "hook_moods": [
+      "THE MOMENT EVERYTHING CHANGED",
+      "HE NEVER SAW IT COMING",
+      "THE PART NOBODY EXPECTS"
+    ]
   },
   "talking_head_vertical": {
     "target_range": [
@@ -136,6 +161,11 @@
       0.2,
       0.5
     ],
-    "transition_fade_max": 0.18
+    "transition_fade_max": 0.18,
+    "hook_moods": [
+      "THE MOMENT EVERYTHING CHANGED",
+      "HE NEVER SAW IT COMING",
+      "THE PART NOBODY EXPECTS"
+    ]
   }
 }

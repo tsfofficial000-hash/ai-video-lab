@@ -29,22 +29,95 @@ def load_bar_map(reports_dir, source_meta):
     return None
 
 
-def pick_hook(transcript, beats, style):
-    """Return hook text or None. Strongest sentence = highest energy window overlap."""
-    if not transcript or transcript.get("transcript_empty"):
-        return None
-    segs = transcript.get("segments", [])
-    if not segs:
-        return None
-    peaks = beats.get("energy_peak_starts", [])
+HOOK_TRAILING_STOP = {"to", "the", "a", "an", "of", "and", "or", "you", "your",
+                      "is", "it", "its", "in", "on", "at", "for", "with", "what",
+                      "why", "how", "this", "that", "but", "so"}
+HOOK_LEADING_STOP = {"to", "the", "a", "an", "of", "and", "or", "but", "so", "is", "it"}
+
+
+def word_complete(text):
+    """A hook is word-complete when its last word is a content word - the
+    historic defect was a mid-phrase slice ending on '...TO THE LAND'."""
+    import re as _re
+    words = _re.findall(r"[A-Za-z0-9']+", text or "")
+    return bool(words) and words[-1].lower().strip("'\"") not in HOOK_TRAILING_STOP
+
+
+def _rule_of(text):
+    tl = (text or "").lower()
+    if any(w in tl for w in ("what", "why", "how", "who", "when")):
+        return "curiosity"
+    if any(w in tl for w in ("never", "secret", "best", "insane", "nobody",
+                             "escape", "fear", "storm", "last")):
+        return "stakes"
+    return "punch"
+
+
+def _clause_candidates(text, rule):
+    """Complete phrases from ONE sentence: complete clauses (split at
+    punctuation) or edge-trimmed spans. Interior slicing is IMPOSSIBLE by
+    construction - the v2.0 hook 'WHAT BRINGS YOU / TO THE LAND' (a prefix
+    cut of a 10-word sentence) can never be authored again."""
+    import re as _re
+    out = []
+    for clause in _re.split(r"[,.;:!?]+", text or ""):
+        words = clause.split()
+        if not words:
+            continue
+        if len(words) <= 6:
+            out.append((" ".join(words), rule))
+            continue
+        lead = 0
+        while lead < len(words) and words[lead].lower().strip("'\"") in HOOK_LEADING_STOP:
+            lead += 1
+        trail = len(words)
+        while trail > lead and words[trail - 1].lower().strip("'\"") in HOOK_TRAILING_STOP:
+            trail -= 1
+        trimmed = words[lead:trail]
+        if 1 <= len(trimmed) <= 6:
+            out.append((" ".join(trimmed), rule + "+edge_trim"))
+    return out
+
+
+def hook_candidates(transcript, beats, style_cfg, title):
+    """E5: author 3 COMPLETE hook candidates (<= 6 words each) from transcript
+    meaning. Rules: curiosity (question words), punch (short + energy overlap),
+    stakes (urgency words). Only complete clauses / edge-trimmed spans qualify;
+    an empty transcript falls back to the style's mood-hook list."""
+    cands, seen = [], set()
+    segs = (transcript or {}).get("segments") or []
+    peaks = (beats or {}).get("energy_peak_starts") or []
+
     def score(s):
         dur = max(s["end"] - s["start"], 0.3)
-        base = min(len(s["text"]) / 60.0, 1.0)          # substantial but short
         energy = sum(1 for p in peaks if p <= s["end"] and p >= s["start"] - 1.0)
-        excl = 2.0 if any(w in s["text"].lower() for w in ("never", "secret", "why", "how", "best", "insane")) else 0
-        return base + energy * 0.5 + excl + (0.5 if dur < 4 else 0)
-    best = max(segs, key=score)
-    return best["text"].strip()[:90]
+        return min(len(s["text"]) / 60.0, 1.0) + energy * 0.5 + (0.5 if dur < 4 else 0)
+
+    for s in sorted(segs, key=score, reverse=True):
+        for txt, rule in _clause_candidates(s["text"].strip(), _rule_of(s["text"])):
+            key = txt.lower()
+            if key not in seen and word_complete(txt):
+                seen.add(key)
+                cands.append({"text": txt, "rule": rule, "src": round(s["start"], 2)})
+    if len(cands) < 3:
+        moods = style_cfg.get("hook_moods") or [title or "MONTAGE"]
+        for m in moods:
+            if len(cands) >= 3:
+                break
+            if m.lower() not in seen:
+                seen.add(m.lower())
+                cands.append({"text": m, "rule": "mood_hook", "src": None})
+    return cands[:3]
+
+
+def choose_hook(cands, width_chars=30):
+    """Width-fit selects among complete candidates; NEVER truncates one.
+    Falls back to the shortest candidate when none fits the width budget."""
+    texts = [c["text"] if isinstance(c, dict) else str(c) for c in (cands or [])]
+    for t in texts:
+        if len(t) <= width_chars:
+            return t
+    return min(texts, key=len) if texts else ""
 
 
 def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
@@ -399,11 +472,16 @@ def main():
             if hero_out and hero_out > 1.5:
                 sfx_events.append({"t": round(hero_out - 1.2, 2), "kind": "riser"})
 
-    hook_text = pick_hook(transcript, beats, style_cfg)
+    hook_cands = hook_candidates(transcript, beats, style_cfg, a.title)
+    # E5: width-fit selects among COMPLETE candidates - never a truncation
+    hook_text = choose_hook(hook_cands, width_chars=30) if hook_cands else None
     # resilience: an empty transcript must never ship a hookless open
     # (creative loop draft 37886393173: silent transcribe fail -> hook=no -> no typography)
     if not hook_text:
         hook_text = a.title or "MONTAGE"
+        hook_cands = hook_cands or [{"text": hook_text, "rule": "title", "src": None}]
+    chosen_meta = next((c for c in hook_cands
+                        if (c["text"] if isinstance(c, dict) else str(c)) == hook_text), None)
     plan = {
         "style": a.style,
         "mood": a.mood,
@@ -414,6 +492,9 @@ def main():
         "hook": {
             "type": style_cfg.get("hook", "title_card"),
             "text": hook_text,
+            "chosen": hook_text,
+            "candidates": hook_cands,
+            "rule": (chosen_meta or {}).get("rule") if isinstance(chosen_meta, dict) else None,
             "seconds": [0, min(3.0, total / 4)],
         },
         "segments": segments,

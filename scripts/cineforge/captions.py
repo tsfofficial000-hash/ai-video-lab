@@ -178,14 +178,18 @@ def main():
     # ---- hook card (title_card styles): display face, y=30%, entrance anim ----
     hook = plan.get("hook") or {}
     if hook.get("type") in ("title_card", "bold_statement", "emotional_line") and hook.get("text"):
-        words = hook["text"].split()[:6]
-        text = " ".join(words).upper()
-        h0, h1 = (hook.get("seconds") or [0, 2.5])[:2]
-        h1 = min(h1, 2.5)
-        y = int(h * safe.get("hook_y_center", 0.30))
-        # width fit: Anton avg glyph ~= 0.44x size. Wrap to <=2 lines and drop
-        # the size toward the 150px spec floor until every line fits 92% width
-        # (creative review r1: 168px single line clipped both edges at t=0).
+        # E5: the candidate pool is complete phrases authored by the plan layer;
+        # width-fit SELECTS among them, it never truncates one. The v2.0
+        # `text.split()[:6]` mid-phrase slice is gone.
+        pool = []
+        chosen_rec = hook.get("chosen") or hook.get("text")
+        if chosen_rec:
+            pool.append(chosen_rec)
+        for c in (hook.get("candidates") or []):
+            t = c.get("text") if isinstance(c, dict) else str(c)
+            if t and t not in pool:
+                pool.append(t)
+
         def hook_lines(txt, size):
             max_w = 0.92 * w
             lines = [txt]
@@ -219,7 +223,21 @@ def main():
                         lines.append(cur)
                     return lines[:3], 150
             return lines[:3], size
-        hook_txt_lines, hook_fs = hook_lines(text, hook_size)
+
+        chosen_txt, hook_txt_lines, hook_fs = None, None, hook_size
+        for cand in pool:                       # first candidate that width-fits
+            cand_up = str(cand).upper()
+            lines_try, size_try = hook_lines(cand_up, hook_size)
+            if len(lines_try) <= 2 and max(len(l) for l in lines_try) * 0.44 * size_try <= 0.92 * w:
+                chosen_txt, hook_txt_lines, hook_fs = cand_up, lines_try, size_try
+                break
+        if chosen_txt is None and pool:         # floor-size fallback, still complete
+            shortest = min((str(c) for c in pool), key=len)
+            chosen_txt = shortest.upper()
+            hook_txt_lines, hook_fs = hook_lines(chosen_txt, 150)
+        h0, h1 = (hook.get("seconds") or [0, 2.5])[:2]
+        h1 = min(h1, 2.5)
+        y = int(h * safe.get("hook_y_center", 0.30))
         y0 = int(y - (len(hook_txt_lines) - 1) * hook_fs * 0.55)
         tags = (r"{\pos(" + f"{w // 2},{y0})" + rf"\fs{hook_fs}" +
                 r"\fad(250,180)\fscx92\fscy92" +
@@ -228,7 +246,10 @@ def main():
         events.append(f"Dialogue: 1,{ts(h0)},{ts(h1)},Hook,,0,0,0,,{tags}{body}")
         decisions.append({"cue": h0, "element": "hook_card",
                           "placement": f"y={y0} size={hook_fs} lines={hook_txt_lines}",
-                          "reason": "hook_y_center per safe_zones, width-fitted", "face": None})
+                          "reason": "hook_y_center per safe_zones, width-fit selected "
+                                    "among complete candidates (E5)",
+                          "face": None,
+                          "candidates_considered": pool[:3]})
 
     # ---- captions ----
     # Transcript times are SOURCE times; the edit is a re-cut. Project each

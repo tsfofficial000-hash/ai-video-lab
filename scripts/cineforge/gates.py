@@ -182,6 +182,15 @@ def main():
     g4, g4_val, g4_detail = gate4(a.video, plan, dur)
 
     # ---- G5 TYPO: OFL fonts + captions pixel-test + per-cue decisions ----
+    # E5 clause: the chosen hook must be one of the authored candidates and
+    # word-complete (no mid-phrase truncation ever ships)
+    def _word_complete(text):
+        words = re.findall(r"[A-Za-z0-9']+", text or "")
+        trailing = {"to", "the", "a", "an", "of", "and", "or", "you", "your",
+                    "is", "it", "its", "in", "on", "at", "for", "with", "what",
+                    "why", "how", "this", "that", "but", "so"}
+        return bool(words) and words[-1].lower().strip("'\"") not in trailing
+
     fonts_ok = bool(fonts) and (fonts.get("all_required_ok")
                                 or all((v or {}).get("status") in ("cached", "downloaded", "ok")
                                        for v in (fonts.get("fonts") or {}).values()))
@@ -199,6 +208,15 @@ def main():
     else:
         g5 = fonts_ok and lic_ok
         g5_val = f"fonts_ok={fonts_ok} lic={lic_ok} captions=none-for-style"
+    hook_plan = plan.get("hook") or {}
+    hook_cands = hook_plan.get("candidates") or []
+    if hook_cands:
+        cand_texts = [c.get("text") if isinstance(c, dict) else str(c) for c in hook_cands]
+        chosen_hook = hook_plan.get("chosen") or hook_plan.get("text") or ""
+        hook_in = chosen_hook in cand_texts
+        hook_wc = _word_complete(chosen_hook)
+        g5 = g5 and hook_in and hook_wc
+        g5_val += f" hookInCands={hook_in} wordComplete={hook_wc}"
 
     # ---- G6 AUDIO: duck depth, music wired, measured output loudness ----
     # E3 clause: music_via != synth whenever egress works; synth only with a

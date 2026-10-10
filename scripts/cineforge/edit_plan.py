@@ -362,6 +362,12 @@ def main():
         "dead_air_removed": audio.get("silence_ratio", 0) > 0.15,
         "source_duration": round(dur, 2),
     }
+    # E3: real-music attribution flows plan-ward (captions.py burns the credit
+    # as a 1-line outro event when the source is CC-BY); via feeds gate G6
+    music_meta = (jload(os.path.join(a.reports, "media_manifest.json"), {}) or {}).get("music") or {}
+    plan["music_via"] = music_meta.get("via")
+    if music_meta.get("attribution_required") and music_meta.get("credit"):
+        plan["music_credit"] = music_meta["credit"]
     jdump(plan, f"{a.reports}/edit_plan.json")
     # engine-compatible timeline (proven montage code path)
     jdump({"meta": {"src_w": meta["width"], "src_h": meta["height"],

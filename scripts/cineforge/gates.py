@@ -201,15 +201,29 @@ def main():
         g5_val = f"fonts_ok={fonts_ok} lic={lic_ok} captions=none-for-style"
 
     # ---- G6 AUDIO: duck depth, music wired, measured output loudness ----
+    # E3 clause: music_via != synth whenever egress works; synth only with a
+    # logged egress-failure reason in the manifest
+    music_meta = (manifest.get("music") or {}) if manifest else {}
+    via = mix.get("music_via") or music_meta.get("via")
     duck_plan_music = plan.get("audio_ducking_plan", {}).get("music")
     music_needed = duck_plan_music is not None
     out_i = mix.get("output_i")
     if music_needed:
-        g6 = (mix.get("mode") == "sidechain_duck" and bool(mix.get("music"))
-              and float(mix.get("duck_depth_db") or 0) >= 6
-              and out_i is not None and -17 <= float(out_i) <= -15)
+        base = (mix.get("mode") == "sidechain_duck" and bool(mix.get("music"))
+                and float(mix.get("duck_depth_db") or 0) >= 6
+                and out_i is not None and -17 <= float(out_i) <= -15)
+        if via == "synth_fallback":
+            egress_dead = (music_meta.get("egress_ok") is False
+                           and bool(music_meta.get("egress_failures")))
+            g6 = base and egress_dead
+            via_note = (" SYNTH-ONLY, egress DEAD + failures logged (allowed)"
+                        if egress_dead else
+                        " SYNTH-ONLY while egress UP - real sources broken (RED, E3)")
+        else:
+            g6 = base
+            via_note = f" via={via or 'unrecorded'}"
         g6_val = (f"mode={mix.get('mode')} duck={mix.get('duck_depth_db')}dB "
-                  f"music={bool(mix.get('music'))} outI={out_i}")
+                  f"music={bool(mix.get('music'))} outI={out_i}{via_note}")
     else:
         g6 = out_i is not None and -17 <= float(out_i) <= -15 if out_i else bool(mix)
         g6_val = f"music=none-for-style mode={mix.get('mode')} outI={out_i}"

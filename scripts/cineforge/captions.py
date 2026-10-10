@@ -322,6 +322,19 @@ def main():
             d["reason"] = f["reason"] + (" -> caption below face bbox" if f["bbox"]
                                          else " -> bottom safe-zone")
 
+    # ---- E3: CC-BY music credit as a 1-line outro event (never truncated) ----
+    credit = plan.get("music_credit")
+    if credit:
+        c_fs = max(28, int(h * 0.018))
+        c_y = int(h * 0.962)                      # below end-card block, inside
+        c0, c1 = max(0.0, plan_total - 2.4), max(0.5, plan_total - 0.2)
+        tags = (r"{\pos(" + f"{w // 2},{c_y})" + rf"\fs{c_fs}" + r"\alpha&H33&}")
+        events.append(f"Dialogue: 1,{ts(c0)},{ts(c1)},Cine,,0,0,0,,{tags}{credit}")
+        decisions.append({"cue": round(c0, 2), "element": "music_credit",
+                          "placement": f"y={c_y} size={c_fs}",
+                          "reason": "CC-BY attribution burned in outro (E3)",
+                          "face": None})
+
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
     open(a.out, "w").write(hdr + "\n".join(events))
     jdump({"style": a.style, "events": len(events), "cues": cues[:12],

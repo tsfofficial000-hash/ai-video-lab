@@ -128,3 +128,29 @@ default media/captions.ass").
   (CF_FONTS_DIR only), plus R3/R4 probes green
 - MEDIA_LICENSES.md updated with the incompetech CC-BY credit string and the
   archive.org ladder rules
+
+## 9. Addendum — CineForge v2.2 audit findings W1–W6 (all closed with probe + fix + one commit)
+
+The v2.2 audit found six gaps on top of the shipped v2.1. Every item follows
+the evidence law: a failing probe reproduces the defect first, the fix lands
+in exactly one commit, and the proof is measured, never asserted. Suite at
+closure: **14/14 mandated probes + nits 4/4 + seven W probes (W1–W7) green**.
+
+| # | Finding | Root cause (measured) | Fix (commit) | Proof |
+|---|---|---|---|---|
+| W1 | Shipped v2.1 final had **no on-screen CC-BY credit** while this report claimed "attribution burned on-screen" | stage-06 downloaded only stage-02…05, so `media_manifest.json` never reached `edit_plan.py` → `plan.music_credit=None` (verified on run 38109649950's committed plan) | stage-01 uploads a tiny `stage-01-manifest` artifact; stage-06 downloads it; QC gained `music_credit_on_screen` (structural + outro-band differential, unmeasurable = RED); G10 attribution clause (manifest → plan → pixels) | `e4f26c2` + probe `w1_credit_burn.py`; ship run 38129852247: credit differentially verified at 15.2 s + frame-extracted credit visible in the released MP4 |
+| W1-CI | The burned credit **clipped both ends** ("Music: " and "BY 4.0" off-frame) | 74 chars at fs 34 ≈ 1150 px > 1080 px frame (frame evidence on run 38128752534) | width-fit: one line at `fs = min(style, 0.92·w/(0.55·len))` floor 22 (lands at 24 → 977 px), two balanced lines only when the floor cannot fit; QC normalizes `\N` in the window finder | `5a7831d` + w1 probe width legs (1080: fs 24 fits; 540: 2-line wrap, every word kept) + rendered-frame visual |
+| W2 | Differential **passed an uncaptioned video** when fonts were unresolvable (deltas 0.000, "tautology confirmed") | a zero delta means "burned" OR "nothing rendered" — no control | `fonts_resolvable()` self-test: a known-text control re-burn (the ass's own families) must inject luma (measured 34.6 YAVG) before any delta is trusted; failure reason propagates RED; void-band guard (both frames reading 0 = unmeasurable) | `0ca4ed2` + probe `w2_font_guard.py` (fontconfig-neutered clean checkout reproduced; unmeasurable REDs with the exact contract reason) |
+| W3 | Draft path **bar-blind**: 98 never ran `bar_map.py` → every draft rendered letterboxed, draft G4 RED, loop reviewed frames production would never show | wiring gap (only make_proxy.sh in the 99 chain built the map) | 98 stage-01+02 runs `bar_map.py` before `edit_plan.py`; evidence bundle copies the map; iterate gate print **requires draft G4 green** (executable heredoc, after the one-liner SyntaxError lesson `42703c0`); G4 verifies the DECLARED layout (cinematic letterbox = 5.5 % bars → presence ≥95 % in a top-4 % band, `741c2aa`/`0cba570`) | `03c91da` + probe `w3_draft_barmap.py` (letterboxed RED 1.000 vs bar-free GREEN 0.000; gate script executed against 3 synthetic gate reports) |
+| W4 | E-sweep music evidence pre-dated the spoken-word veto; **post-veto re-runs still picked OTR radio shows** ("Tales Of The Texas Rangers", "Fibber McGee and Molly - 1942" — metadata carries no spoken-word marker) | text-level veto structurally blind to collection-typed items; `captions.py` also double-counted the last segment (plan total 11.3 s vs delivered 7.9 s) pushing the credit off-screen — caught by W1's own pixel check | veto learned OTR/episode-collection shapes (`52456fa`); archive search excludes `-collection:OldTimeRadio` + collection-field screen (`ef1e820`); credit window anchored to the DELIVERED duration (`7759bf4`, model verified: cum 18.44 == plan delivered on the ship run) | probes `w4_music_evidence.py` + `w7_credit_window.py`; three ALL-GREEN post-veto drafts committed (`3e63344`): zero spoken-word picks, credit pixel-verified in all three finals |
+| W5 | Ship review's declared residuals: static sky-holds occupied cluster slots; 2-line hooks rode ~y12–16 % vs the y=30 % spec center | Selector took the earliest qualifying candidate regardless of motion; `\an5` anchor + a half-line subtraction double-compensated | in-cluster motion-variance selection (most dynamic candidate within a same-scene horizon; all hard guards unchanged, capacity semantics preserved); hook block center anchored directly on the spec line | `6be2c34` + probe `w5_creative_residuals.py` (dynamic 8.0 s candidate beats the 4.0 s sky-hold; 2-line hook anchors at y=576) |
+| W6 | Draft G6 variance (`outI=-14.8`) while production self-heals | the sweep ran before `3a892a6`; nothing proved the loop covers the draft path or labelled draft tolerance | proof: 98's stage-07 invokes the same self-healing `audio_mix.py`; iterate gate print LABELS draft G6 (declared wider [-18,-14], non-fatal; production band enforced at 99) | `bb8caa2` + probe `w6_draft_loudness.py` (draft invocation self-verifies outI=-16.1; corrective primitive -1.4 → -16.0 LUFS) |
+
+**Ship (v2.1.1, final)**: run **38129852247** on `5a7831d` — the release
+[`cineforge-v2.1.1`](https://github.com/tsfofficial000-hash/ai-video-lab/releases/tag/cineforge-v2.1.1)
+assets are replaced in place (same tag, `--clobber`); this run's MP4 is the
+one with the complete, width-fitted credit burned on-screen. Run
+38128752534 (same tag, earlier commit) is superseded: its gates were
+ALL_GREEN but its credit line clipped. Gate snapshot for the final ship run
+lives in `reports/cineforge/run-38129852247/` alongside the superseded
+run's evidence.

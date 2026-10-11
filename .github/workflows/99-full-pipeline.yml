@@ -30,6 +30,10 @@ on:
         description: "loader.to job id to resume"
         required: false
         default: ""
+      release_tag:
+        description: "release tag published by stage 11"
+        required: false
+        default: "cineforge-v2"
 
 permissions: { contents: write }
 
@@ -87,3 +91,5 @@ jobs:
   stage11:
     needs: stage10
     uses: ./.github/workflows/11-final-delivery.yml
+    with:
+      release_tag: ${{ inputs.release_tag }}

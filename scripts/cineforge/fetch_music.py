@@ -84,6 +84,13 @@ MOOD_VETO = {
              "phonk", "drum and bass", "jungle", "workout", "hype",
              "geometry dash", "game", "arcade", "chiptune"],
 }
+# R4 hardening (ship-run lesson: 'The Odyssey' via librivox passed the
+# screen as 'neutral'): SPOKEN-WORD forms are not music for ANY mood. The
+# identifier is scanned too - librivox lives in the id, not the title.
+SPOKEN_WORD_VETO = ["librivox", "audiobook", "audio book", "book chapter",
+                    "chapter ", "poetry reading", "radio drama", "narration",
+                    "narrated", "interview", "lecture", "podcast", "news",
+                    "sermon", "speech", "oral", "dramatic reading"]
 
 
 def _mood_keywords(mood):
@@ -96,14 +103,22 @@ def _mood_keywords(mood):
     return sorted(kws)
 
 
-def mood_fit(title, creator, tags, mood):
+def mood_fit(title, creator, tags, mood, identifier=None):
     """R4 heuristic: (fits, rank_score, 1-line rationale).
-    veto keyword anywhere -> reject; else rank by positive keyword hits;
-    neutral metadata still passes (ranked below hits) so recall survives."""
+    veto keyword anywhere -> reject; spoken-word forms (librivox etc.) are
+    vetoed for every mood - scanned across title, creator, tags AND the
+    archive identifier (librivox lives in the id, not the title);
+    positive keyword hits rank first; neutral metadata still passes (ranked
+    below hits) so recall survives."""
     tag_list = tags if isinstance(tags, list) else ([tags] if tags else [])
     text = " ".join([str(title or ""), str(creator or ""),
+                     str(identifier or ""),
                      " ".join(str(t) for t in tag_list)]).lower()
     fam = MOOD_FAMILY.get((mood or "").lower(), "score")
+    for kw in SPOKEN_WORD_VETO:
+        if kw in text:
+            return False, 0, (f"vetoed: '{kw.strip()}' is spoken-word, not "
+                              f"music (mood '{mood}')")
     for kw in MOOD_VETO.get(fam, []):
         if kw in text:
             return False, 0, (f"vetoed: '{kw}' in title/creator/tags "
@@ -122,7 +137,8 @@ def apply_mood_fit(cands, mood):
     kept = []
     for c in cands:
         fits, score, why = mood_fit(c.get("title"), c.get("creator"),
-                                    c.get("subject"), mood)
+                                    c.get("subject"), mood,
+                                    identifier=c.get("identifier"))
         if not fits:
             continue
         c = dict(c, mood_fit=why, mood_score=score)
@@ -255,10 +271,12 @@ def entry_for_download(kind, title, url, license_=None, creator=None, license_ur
 
 
 def archive_search(mood):
-    """advancedsearch query string filtered to Creative-Commons-licensed audio."""
+    """advancedsearch query string filtered to Creative-Commons-licensed audio.
+    R4 hardening: -collection:librivoxaudio keeps the audiobook flood out of
+    the result set (sorted by downloads, librivox chapters dominate otherwise)."""
     kw = ARCHIVE_QUERIES.get(mood, "(instrumental OR soundtrack)")
     return ("https://archive.org/advancedsearch.php?q=licenseurl%3A%2Acreativecommons%2A"
-            "+AND+mediatype%3Aaudio+AND+"
+            "+AND+mediatype%3Aaudio+AND+-collection%3Alibrivoxaudio+AND+"
             + urllib.parse.quote(kw) +
             "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=licenseurl"
             "&sort%5B%5D=downloads+desc&rows=8&output=json")
@@ -320,7 +338,7 @@ def _archive_candidates(mood, failures):
     for c in out:
         if c["identifier"] not in {k["identifier"] for k in ranked}:
             failures.append(f"archive_cc: {c['identifier']}: mood-vetoed "
-                            f"({mood_fit(c.get('title'), c.get('creator'), c.get('subject'), mood)[2]})")
+                            f"({mood_fit(c.get('title'), c.get('creator'), c.get('subject'), mood, identifier=c.get('identifier'))[2]})")
     return ranked
 
 

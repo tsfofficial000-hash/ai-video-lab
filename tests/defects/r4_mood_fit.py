@@ -84,6 +84,17 @@ def main():
             fail(f"mood '{mood}' has no family/veto mapping - mood screen silent")
     ok(f"all {len(fm.ARCHIVE_QUERIES)} moods mapped to veto families")
 
+    # 7) ship-run lesson: spoken-word (librivox audiobooks) is not music for
+    #    ANY mood - vetoed via the identifier even with a neutral title
+    fits, score, why = fm.mood_fit("The Odyssey", "LibriVox volunteers", [],
+                                   "cinematic", identifier="odyssey_butler_librivox")
+    if fits:
+        fail(f"spoken-word hardening present: a librivox audiobook passed the "
+             f"music screen (why={why!r})")
+    if "spoken-word" not in why:
+        fail(f"spoken-word veto rationale must say 'spoken-word' (got {why!r})")
+    ok(f"librivox audiobook vetoed: {why}")
+
     print("R4 PROBE: PASS (mood screen + rationale in the manifest)")
 
 

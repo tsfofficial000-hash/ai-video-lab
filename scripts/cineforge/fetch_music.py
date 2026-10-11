@@ -20,6 +20,7 @@ recorded in media_manifest.json with license + attribution + via.
 import argparse
 import json
 import os
+import re
 import subprocess
 import urllib.parse
 import urllib.request
@@ -87,10 +88,24 @@ MOOD_VETO = {
 # R4 hardening (ship-run lesson: 'The Odyssey' via librivox passed the
 # screen as 'neutral'): SPOKEN-WORD forms are not music for ANY mood. The
 # identifier is scanned too - librivox lives in the id, not the title.
+# W4 hardening (post-veto sweep re-runs: 'Jack Benny 143 Eps' (radio comedy
+# collection) and 'Tales Of The Texas Rangers' (radio drama series) still
+# passed as 'neutral'): old-time-radio collections and episode aggregations
+# are spoken-word, never mood music. Multi-word radio phrases only - a bare
+# 'radio' would false-veto music like 'Radioactive'.
 SPOKEN_WORD_VETO = ["librivox", "audiobook", "audio book", "book chapter",
                     "chapter ", "poetry reading", "radio drama", "narration",
                     "narrated", "interview", "lecture", "podcast", "news",
-                    "sermon", "speech", "oral", "dramatic reading"]
+                    "sermon", "speech", "oral", "dramatic reading",
+                    "old time radio", "radio show", "radio program",
+                    "radio series", "radio episode", "radio collection",
+                    "radio broadcasts", "bbc radio", "variety show",
+                    "comedy show", "sitcom", "game show", "quiz show"]
+# episode-collection shapes: "Jack Benny 143 Eps", "Ep. 1-40", "Episodes 12"
+SPOKEN_WORD_RX = [re.compile(r"\b\d+\s*eps?\b"),
+                  re.compile(r"\beps?\s*\d"),
+                  re.compile(r"\bepisodes?\b"),
+                  re.compile(r"\botr\b")]
 
 
 def _mood_keywords(mood):
@@ -118,6 +133,12 @@ def mood_fit(title, creator, tags, mood, identifier=None):
     for kw in SPOKEN_WORD_VETO:
         if kw in text:
             return False, 0, (f"vetoed: '{kw.strip()}' is spoken-word, not "
+                              f"music (mood '{mood}')")
+    for rx in SPOKEN_WORD_RX:                      # W4: episode collections
+        m = rx.search(text)
+        if m:
+            return False, 0, (f"vetoed: '{m.group(0).strip()}' marks an "
+                              f"episode/OTR collection - spoken-word, not "
                               f"music (mood '{mood}')")
     for kw in MOOD_VETO.get(fam, []):
         if kw in text:

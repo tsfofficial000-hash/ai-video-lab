@@ -186,7 +186,12 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     #   L0 normal params (luma floor 36, scarcity margin 1.08)
     #   L1 scarcity cps margin 1.08 -> 1.05 -> 1.00 (cps band lower edge)
     #   L2 luma floor 36 -> 30 (max -6, logged reason)
-    #   L3 still short -> target_impossible note (max achievable, style density)
+    #   L3 (R3) style-density downshift: walk the DENSITY LADDER toward
+    #       sparser cuts bands (one style step per logged step) - a
+    #       cluster-capped source that cannot fill the request at a dense
+    #       band may fit it at cinematic 0.3-0.7 cps (13 segs x ~2.3 s)
+    #   L4 still short -> target_impossible note (max achievable, style density)
+    #       - impossibility stays the LAST resort
     requested = requested_len if requested_len else target_len
     goal = 0.80 * float(requested)
     relaxations = []
@@ -226,6 +231,16 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
         n_fw = sum(1 for k in range(n_tr)
                    if k != 0 and (k + 1) != n_tr and (k + 1) % per_section == 0)
         return 0.18 + fb + n_fw * flash + max(0, n_tr - 2 - n_fw) * 0.05
+
+    def _fidelity_out(n_, band_, tgt_):
+        """R3: per-segment out_dur that fills TOWARD the requested target
+        without leaving the density band. cps = n/(n*out - tr) must stay in
+        [band_lo, band_hi]; the ceiling bound accounts for transition time so
+        the capped solve never breaches band_hi."""
+        n_ = max(n_, 1)
+        tr = _mix_transition_sum(n_)
+        out_ceiling = (n_ / band_[1] + tr) / n_      # cps == band_hi exactly
+        return min(max(tgt_ / n_, out_ceiling), 1.0 / band_[0])
 
     sel = Selector(beats_list, dur, luma=luma, min_y=min_y, scene_of=scene_of,
                    max_per_scene=max_per_scene, scene_cuts=scene_cuts)
@@ -286,6 +301,54 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
                                f"cap {max_per_scene}) cannot fill {float(requested):.0f}s "
                                f"at style density band {band} even after the declared "
                                f"relaxations")
+    if pred < goal:
+        # L3 (R3): style-density downshift - the ladder never tried a SPARSER
+        # density band, so a cluster-capped source declared impossibility while
+        # a one-step-sparser band fills the same request inside the scene cap
+        # (audit: 30 s requested -> 10 s delivered at beat_montage 1.2-2.0 cps
+        # with 13 effective segments; cinematic 0.3-0.7 cps fits 13 x ~2.3 s).
+        # Walk one style step at a time; every step is logged; impossibility
+        # remains the last resort.
+        styles_all = jload(REPO_ROOT + "/configs/styles.json", {})
+        ladder_ = sorted(((k, list(v.get("cuts_band") or [1.2, 2.0]))
+                          for k, v in styles_all.items() if v.get("cuts_band")),
+                         key=lambda kv: (-kv[1][0], -kv[1][1]))
+        try:
+            idx_ = next(i for i, (_k, b) in enumerate(ladder_) if b == list(band))
+        except StopIteration:
+            idx_ = -1
+        for dn_style, dn_band in ladder_[idx_ + 1:]:
+            if dn_band[0] >= band[0]:        # must actually be sparser
+                continue
+            # fill toward the REQUEST (fidelity), never past it, while staying
+            # inside the candidate band (ceiling bound is transition-aware)
+            out_tgt = _fidelity_out(n_eff, dn_band, target_len)
+            fill = n_eff * out_tgt - _mix_transition_sum(n_eff)
+            if fill < goal:
+                continue   # this step alone cannot reach the goal
+            relaxations.append({"kind": "style_density_downshift",
+                                "from_band": list(band), "to_band": list(dn_band),
+                                "toward_style": dn_style,
+                                "reason": f"{n_eff} scene-cap-effective segments fill "
+                                          f"only ~{pred:.1f}s at band {band}; band "
+                                          f"{dn_band} (style '{dn_style}') fills "
+                                          f"~{fill:.1f}s >= goal {goal:.1f}s; "
+                                          f"density step logged (R3)"})
+            band = list(dn_band)
+            print(f"[plan] L3 density downshift: cuts band {dn_band} "
+                  f"(toward style '{dn_style}'), base_out {base_out}s "
+                  f"~{fill:.1f}s fill (goal {goal:.1f}s) - logged relaxation",
+                  flush=True)
+            # A downshift fires only when CAPACITY binds (pred was < goal), so
+            # the new density walks the full effective capacity: solve, walk
+            # count and transition census stay mutually consistent and the
+            # delivered cps lands inside the declared band by construction.
+            n_target = n_eff
+            base_out = round(out_tgt, 3)
+            pred = n_eff * base_out
+            scarcity = True
+            break
+
     if scarcity:
         # Scarcity solver: n candidates is the hard capacity (G3 no-reuse), so
         # every candidate hosts one segment. Sizing contract:
@@ -315,8 +378,12 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
             # Renderer law: output = min(out_dur, src/speed) -> we store
             # src_dur=0.73 explicitly and speed=src/out (<=1, subtle slow-mo)
             # so src/speed == out_dur exactly: no trim waste, spans consistent.
-            out_dur = round(min(max((n_eff / (band[0] * sc_margin)
-                                     + _mix_transition_sum(n_eff)) / n_eff, 0.4), 5.0), 3)
+            # R3: the solve is capped at the request (fidelity, not overshoot)
+            # but never below the band ceiling bound.
+            out_tgt_cap = _fidelity_out(n_eff, band, target_len)
+            out_dur = round(min(max(min((n_eff / (band[0] * sc_margin)
+                                         + _mix_transition_sum(n_eff)) / n_eff,
+                                        out_tgt_cap), 0.4), 5.0), 3)
         elif k == 0:
             out_dur = base_out * 1.9
         elif k == n_target - 1:
@@ -329,8 +396,10 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
         speed = 1.0
         if scarcity:
             # span/speed/out consistent: src_dur stored explicitly below;
-            # overlap = 0.73 - min candidate spacing (0.44) = 0.29 <= 0.3 (G3)
-            src_span = 0.73
+            # overlap = src_span - min candidate spacing <= 0.3 (G3); the span
+            # grows with out_dur so speed never drops below the 0.55 clamp
+            # (otherwise src/speed < out_dur and the output undershoots the plan)
+            src_span = round(max(0.73, out_dur * 0.551), 3)
             speed = round(max(0.55, min(1.0, src_span / out_dur)), 3)
         else:
             if hero_t is not None and not hero_used and abs(cursor - hero_t) <= beat_period * 1.5:
@@ -500,6 +569,8 @@ def build_timeline(source_meta, beats, style_cfg, style, target_len, luma=None,
     audit["beat_alignment_ms"] = beat_align_ms
     audit["section_flash_times"] = section_times
     audit["cut_density_target_cps"] = round(cps_target, 2)
+    audit["effective_cuts_band"] = list(band)
+    audit["style_cuts_band"] = list(style_cfg.get("cuts_band") or band)
     audit["bar_map"] = bar_census
     audit["relaxations"] = relaxations
     audit["transition_mix"] = transition_mix
@@ -645,6 +716,17 @@ def main():
         "after_source_cap": round(target, 2),
         "delivered": round(total, 2),
     }
+    # R3: the density downshift (if any) is a DECLARED relaxation - the plan
+    # measures G7 against the effective band and the user-facing duration
+    # chain states delivered vs requested and why.
+    plan["cuts_band"] = audit.get("effective_cuts_band") or style_cfg.get("cuts_band")
+    if any((r or {}).get("kind") == "style_density_downshift"
+           for r in (audit.get("relaxations") or [])):
+        plan["duration_chain"]["note"] = (
+            f"density band downshifted from style band {audit.get('style_cuts_band')} "
+            f"to {plan['cuts_band']} (declared style_density_downshift relaxation) "
+            f"to meet the 80% fidelity floor; delivered {round(total, 2)}s vs "
+            f"requested {round(float(requested_len), 2)}s")
     # always declare the relaxation record - empty means "tried, none needed",
     # the impossibility note carries the reasons when none could help
     plan["relaxations"] = audit.get("relaxations") or []

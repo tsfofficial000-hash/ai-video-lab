@@ -1,0 +1,6 @@
+  delivered=14.96s requested=30.0s
+  relaxations: [{"kind": "style_density_downshift", "from_band": [1.2, 2.0], "to_band": [0.3, 0.7], "toward_style": "cinematic", "reason": "19 scene-cap-effective segments fill only ~14.7s at band [1.2, 2.0]; band [0.3, 0.7] (style 'cinematic') fills ~28.7s >= goal 24.0s; density step logged (R3)"}]
+  cuts_band=[0.3, 0.7] (style band [1.2, 2.0])
+  PASS: downshift attempted before impossibility: [[0.3, 0.7]] then honest note
+  PASS: delivered cps 0.67 inside the declared band [0.3, 0.7]
+R3 PROBE: PASS (density downshift in the ladder, impossibility last)

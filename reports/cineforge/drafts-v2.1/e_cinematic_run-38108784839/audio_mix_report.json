@@ -1,0 +1,11 @@
+{
+ "mode": "sidechain_duck",
+ "music": "../../media/music.mp3",
+ "target": "I=-16 TP=-1.5 LRA=11",
+ "denoise": false,
+ "duck_depth_db": 13.39,
+ "duck_windows": 1,
+ "output_i": -16.6,
+ "sfx_mixed": 0,
+ "out": "../../media/mixed_audio.wav"
+}

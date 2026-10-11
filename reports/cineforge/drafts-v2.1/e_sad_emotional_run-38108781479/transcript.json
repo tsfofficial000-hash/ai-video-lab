@@ -1,0 +1,20 @@
+{
+ "model": "small",
+ "language": "en",
+ "transcript_empty": false,
+ "segments": [
+  {
+   "start": 11.92,
+   "end": 14.42,
+   "text": "What brings you to the land of the gatekeepers?",
+   "confidence": -0.306
+  },
+  {
+   "start": 14.42,
+   "end": 20.13,
+   "text": "I'm searching for someone.",
+   "confidence": -0.306
+  }
+ ],
+ "duration_analyzed": 20.13
+}

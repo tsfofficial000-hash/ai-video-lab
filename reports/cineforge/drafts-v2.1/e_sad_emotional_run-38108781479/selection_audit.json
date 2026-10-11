@@ -1,0 +1,102 @@
+{
+ "wraparound": false,
+ "luma_gate_min_y": 36.0,
+ "head_guard_s": 1.5,
+ "tail_guard_s": 2.61,
+ "excluded_dark_ranges": [
+  [
+   0.0,
+   1.5
+  ],
+  [
+   9.0,
+   12.5
+  ],
+  [
+   13.5,
+   16.5
+  ],
+  [
+   17.5,
+   18.5
+  ],
+  [
+   21.0,
+   22.5
+  ],
+  [
+   42.0,
+   52.0
+  ]
+ ],
+ "n_candidates": 35,
+ "n_selected": 3,
+ "n_dropped_luma": 58,
+ "n_dropped_overlap": 0,
+ "n_dropped_exhausted": 1,
+ "n_dropped_scene_cap": 0,
+ "max_per_scene": 2,
+ "scene_cuts": [
+  0.0,
+  13.92,
+  15.96,
+  17.5,
+  21.46,
+  23.79,
+  25.88,
+  27.42,
+  29.96,
+  32.12
+ ],
+ "cluster_histogram": {
+  "5": 1,
+  "9": 2
+ },
+ "overlaps_gt_030s": [],
+ "selected_span": [
+  22.57,
+  40.547
+ ],
+ "beat_alignment_ms": 0.0,
+ "section_flash_times": [],
+ "cut_density_target_cps": 0.25,
+ "effective_cuts_band": [
+  0.15,
+  0.35
+ ],
+ "style_cuts_band": [
+  0.15,
+  0.35
+ ],
+ "bar_map": {
+  "map": false,
+  "attached": 0,
+  "scenes": 0
+ },
+ "relaxations": [],
+ "transition_mix": {
+  "pseudo_cut": 0,
+  "fade": 2,
+  "fadewhite": 0,
+  "fadeblack": 0
+ },
+ "target_impossible": {
+  "requested": 30.0,
+  "delivered": 10.4,
+  "max_achievable": 10.4,
+  "style": "sad_emotional",
+  "cuts_band": [
+   0.15,
+   0.35
+  ],
+  "n_candidates": 35,
+  "n_effective_capacity": 14,
+  "n_clusters": 7,
+  "max_per_scene": 2,
+  "relaxations": [],
+  "reasons": [
+   "scene-cap-effective capacity 14 cannot reach 24.0s at style density band [0.15, 0.35]"
+  ],
+  "note": "requested 30s: max achievable ~10.4s at sad_emotional density (band [0.15, 0.35]); capacity 14 scene-capped segments (35 clean candidates in 7 candidate-bearing clusters x cap 2); declared relaxations applied"
+ }
+}

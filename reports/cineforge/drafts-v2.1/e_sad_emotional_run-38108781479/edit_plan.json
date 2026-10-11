@@ -1,0 +1,200 @@
+{
+ "style": "sad_emotional",
+ "mood": "sad",
+ "target_duration": 10.4,
+ "aspect_ratio": "9:16",
+ "fps": 30,
+ "resolution": "1080x1920",
+ "hook": {
+  "type": "emotional_line",
+  "text": "I'm searching for someone",
+  "chosen": "I'm searching for someone",
+  "candidates": [
+   {
+    "text": "I'm searching for someone",
+    "rule": "punch",
+    "src": 14.42
+   },
+   {
+    "text": "SOME GOODBYES NEVER END",
+    "rule": "mood_hook",
+    "src": null
+   },
+   {
+    "text": "THE LAST GOOD DAY",
+    "rule": "mood_hook",
+    "src": null
+   }
+  ],
+  "rule": "punch",
+  "seconds": [
+   0,
+   2.6
+  ]
+ },
+ "segments": [
+  {
+   "i": 0,
+   "src_start": 22.57,
+   "out_dur": 5.0,
+   "speed": 1.0,
+   "zoom": 1.0,
+   "src_dur": 5.0,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.5
+   }
+  },
+  {
+   "i": 1,
+   "src_start": 32.601,
+   "out_dur": 3.4,
+   "speed": 1.0,
+   "zoom": 1.0,
+   "src_dur": 3.4,
+   "transition_after": {
+    "type": "fade",
+    "dur": 0.5
+   }
+  },
+  {
+   "i": 2,
+   "src_start": 37.547,
+   "out_dur": 3.0,
+   "speed": 1.0,
+   "zoom": 1.0,
+   "src_dur": 3.0,
+   "transition_after": {
+    "type": "none",
+    "dur": 0.0
+   }
+  }
+ ],
+ "cut_points": [
+  22.57,
+  32.601,
+  37.547
+ ],
+ "cut_density_cps": 0.29,
+ "cuts_band": [
+  0.15,
+  0.35
+ ],
+ "beat_alignment_ms": 0.0,
+ "sfx_events": [],
+ "transition_types": [
+  "fade"
+ ],
+ "music_cut_alignment": "beat_grid",
+ "caption_style": "emotional_soft",
+ "color_grade": "sad_cold",
+ "b_roll_suggestions": [],
+ "sfx_suggestions": [],
+ "audio_ducking_plan": {
+  "mode": "sidechain_duck",
+  "music": "media/music.mp3",
+  "duck_to_db": -14
+ },
+ "fallback_plan": [
+  {
+   "condition": "rembg_missing_or_slow",
+   "action": "skip text-behind-subject, use normal title overlay",
+   "cost_note": "rembg on 4-core/16GB runner ~20-60s/frame-range; only first 3s would qualify"
+  },
+  {
+   "condition": "mediapipe_missing_or_slow",
+   "action": "center crop 9:16, static; else blurred-background fill",
+   "cost_note": "MediaPipe face detection ~15fps analysis on runner; acceptable but not required"
+  },
+  {
+   "condition": "demucs_missing_or_slow",
+   "action": "FFmpeg sidechaincompress ducking + afftdn noise reduction",
+   "cost_note": "Demucs CPU separation of a 3-min track ~6-10 min on runner; not worth latency"
+  },
+  {
+   "condition": "transcription_too_slow",
+   "action": "draft: faster-whisper base int8; final: small int8; skip captions if still >8min",
+   "cost_note": "small int8 ~4.2x realtime measured in prior runs (whisper-asr.yml evidence)"
+  },
+  {
+   "condition": "render_too_slow",
+   "action": "draft at 540x960 preset veryfast crf 23; final at 1080x1920 preset medium crf 19",
+   "cost_note": "draft is ~4x faster end-to-end"
+  },
+  {
+   "condition": "download_fails",
+   "action": "acquisition ladder: yt-dlp multi-client -> loader.to tunnel -> release asset -> safe sample",
+   "cost_note": "see acquire_source.sh; every failure mode logged"
+  },
+  {
+   "condition": "music_download_fails",
+   "action": "generate ambient pad with ffmpeg (see music_moods.json fallback)",
+   "cost_note": "instant, zero network"
+  },
+  {
+   "condition": "no_beats_detected",
+   "action": "uniform 1.35s cut grid; scene-change alignment preferred",
+   "cost_note": "graceful, proven in synthetic dry-run"
+  },
+  {
+   "condition": "fonts_fetch_fails",
+   "action": "fallback to DejaVu Sans Bold for captions/hook (record license note), never fail the run",
+   "cost_note": "DejaVu is preinstalled on ubuntu runners; zero latency"
+  },
+  {
+   "condition": "mediapipe_unavailable",
+   "action": "smart_crop degrades to center cover_crop; decision logged per cue",
+   "cost_note": "face-avoidance is best-effort; captions still land in safe zone"
+  }
+ ],
+ "vertical_plan": "cover_crop",
+ "letterbox": false,
+ "title_main": "MONTAGE",
+ "title_sub": "AI VIDEO LAB",
+ "dead_air_removed": false,
+ "source_duration": 52.21,
+ "music_via": "archive_cc",
+ "requested_duration": 30.0,
+ "duration_chain": {
+  "requested": 30.0,
+  "style_range": [
+   30,
+   60
+  ],
+  "after_source_cap": 30.0,
+  "delivered": 10.4
+ },
+ "relaxations": [],
+ "transition_mix": {
+  "pseudo_cut": 0,
+  "fade": 2,
+  "fadewhite": 0,
+  "fadeblack": 0
+ },
+ "scene_diversity": {
+  "max_per_scene": 2,
+  "cluster_histogram": {
+   "5": 1,
+   "9": 2
+  }
+ },
+ "target_impossible_note": {
+  "requested": 30.0,
+  "delivered": 10.4,
+  "max_achievable": 10.4,
+  "style": "sad_emotional",
+  "cuts_band": [
+   0.15,
+   0.35
+  ],
+  "n_candidates": 35,
+  "n_effective_capacity": 14,
+  "n_clusters": 7,
+  "max_per_scene": 2,
+  "relaxations": [],
+  "reasons": [
+   "scene-cap-effective capacity 14 cannot reach 24.0s at style density band [0.15, 0.35]"
+  ],
+  "note": "requested 30s: max achievable ~10.4s at sad_emotional density (band [0.15, 0.35]); capacity 14 scene-capped segments (35 clean candidates in 7 candidate-bearing clusters x cap 2); declared relaxations applied"
+ }
+}

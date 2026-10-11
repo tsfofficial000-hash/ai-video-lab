@@ -1,0 +1,16 @@
+{
+ "music": {
+  "license": "CC0 (public domain, archive.org licenseurl)",
+  "attribution_required": false,
+  "credit": "The Adventures of Sherlock Holmes - Sir Arthur Conan Doyle (http://creativecommons.org/licenses/publicdomain/)",
+  "via": "archive_cc",
+  "title": "The Adventures of Sherlock Holmes",
+  "url": "https://archive.org/download/adventures_holmes/adventureholmes_01_doyle.mp3",
+  "safe_for_shorts": true,
+  "mood": "sad",
+  "license_url": "http://creativecommons.org/licenses/publicdomain/",
+  "mood_fit": "neutral metadata - no mood contradiction for 'sad'",
+  "bytes": 62507949,
+  "identifier": "adventures_holmes"
+ }
+}

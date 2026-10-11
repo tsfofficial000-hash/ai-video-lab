@@ -1,0 +1,14 @@
+style          grade                  caption              band         cps   music
+sad_emotional  sad_cold               emotional_soft       [0.15, 0.35]  0.29 archive_cc:The Adventures of Sherlock Holmes (mood=sad)
+               mood_fit: neutral metadata - no mood contradiction for 'sad'
+cinematic      cinematic_teal_orange  minimal_clean        [0.3, 0.7]    0.49 archive_cc:The Odyssey (mood=cinematic)
+               mood_fit: neutral metadata - no mood contradiction for 'cinematic'
+motivational   natural                viral_high_contrast  [0.3, 0.7]    0.49 archive_cc:Jack Benny 143 Eps (mood=motivational)
+               mood_fit: neutral metadata - no mood contradiction for 'motivational'
+
+assertions: 3 distinct grades ['cinematic_teal_orange', 'natural', 'sad_cold']
+            3 distinct caption styles ['emotional_soft', 'minimal_clean', 'viral_high_contrast']
+            3 distinct music sources ['Jack Benny 143 Eps', 'The Adventures of Sherlock Holmes', 'The Odyssey']
+            bands [(0.15, 0.35), (0.3, 0.7)] (sad_emotional sparse; cinematic native; motivational via DECLARED downshift [[0.3, 0.7]])
+ZERO CONFIG BLEED: every plan param equals its own style config; the only band deviation is the logged style_density_downshift
+E SWEEP: PASS

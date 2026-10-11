@@ -142,6 +142,21 @@ def main():
         ok(f"gate4: letterboxed RED ({val_lb[:58]}...) vs bar-free GREEN "
            f"bar_fraction={det_bf.get('bar_fraction')}")
 
+        # declared-letterbox contract (cinematic style letterbox=true):
+        # bars are the DESIGN - G4 verifies their PRESENCE, not absence
+        plan_lb = {"vertical_plan": "cover_crop", "resolution": "540x960",
+                   "letterbox": True}
+        g_dec, val_dec, det_dec = gates.gate4(lb, plan_lb, 8.0)
+        if not g_dec or "DECLARED letterbox" not in val_dec:
+            fail(f"declared letterbox with bars rendered must GREEN "
+                 f"(got {val_dec})")
+        g_miss, val_miss, _ = gates.gate4(bf, plan_lb, 8.0)
+        if g_miss:
+            fail(f"a declared letterbox whose bars silently vanished (crop "
+                 f"regression) must RED (got {val_miss})")
+        ok(f"declared letterbox: bars-present GREEN bar_presence="
+           f"{det_dec.get('bar_presence')}; vanished bars RED")
+
     print("W3 PROBE: PASS (draft path builds the bar map, evidence carries "
           "it, draft G4 is required green)")
     sys.exit(0)

@@ -82,6 +82,25 @@ def gate4(video, plan, dur):
         if not samples:
             return False, f"vertical={vertical} edge-band scan produced no samples", {}
         core = [s for s in samples if s["t"] < dur - tail_fade - 0.25] or samples
+        if plan.get("letterbox"):
+            # W4/draft-CI lesson: the cinematic style DECLARES 5.5% bars
+            # (configs/styles.json letterbox=true) - absence-of-bars is not
+            # the contract for that design. G4 verifies the DECLARED layout:
+            # the top 8% band must be dark (bar actually rendered) on >=95%
+            # of core samples. The bottom band is exempt (end-card + music
+            # credit burn there). The original disease stays fatal in both
+            # directions: undeclared bars when letterbox is false (below),
+            # and a declared letterbox that silently vanished (crop
+            # regression) here.
+            dark = [s for s in core if s["top"] < 25]
+            frac = len(dark) / float(len(core))
+            green = frac >= 0.95 and len(core) >= 8
+            val = (f"vertical={vertical} DECLARED letterbox bar_presence="
+                   f"{frac:.3f} ({len(dark)}/{len(core)} dark TOP-band samples, "
+                   f"need >=95%, tail-fade {tail_fade:.1f}s excluded)")
+            return green, val, {"bar_presence": round(frac, 4),
+                                "n_samples": len(core), "n_dark": len(dark),
+                                "declared_letterbox": True}
         dark = [s for s in core if min(s["top"], s["bottom"]) < 25]
         bar_fraction = len(dark) / float(len(core))
         green = bar_fraction <= 0.05 and len(core) >= 8

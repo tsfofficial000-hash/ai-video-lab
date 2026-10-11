@@ -1,0 +1,30 @@
+{
+ "dir": "media/fonts",
+ "fonts": {
+  "Anton-Regular.ttf": {
+   "status": "cached",
+   "bytes": 170812,
+   "license": "OFL",
+   "role": "display"
+  },
+  "BebasNeue-Regular.ttf": {
+   "status": "cached",
+   "bytes": 61400,
+   "license": "OFL",
+   "role": "display_alt"
+  },
+  "Montserrat-Bold.ttf": {
+   "status": "cached",
+   "bytes": 744936,
+   "license": "OFL",
+   "role": "caption"
+  },
+  "Montserrat-ExtraBold.ttf": {
+   "status": "cached",
+   "bytes": 762376,
+   "license": "OFL",
+   "role": "caption_alt"
+  }
+ },
+ "all_required_ok": true
+}

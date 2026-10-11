@@ -1,0 +1,88 @@
+{
+ "status": "pass",
+ "final_path": "../../out/final.mp4",
+ "checks": [
+  {
+   "check": "file_exists",
+   "passed": true,
+   "detail": "5.1MB"
+  },
+  {
+   "check": "probe_ok",
+   "passed": true,
+   "detail": ""
+  },
+  {
+   "check": "duration_in_range",
+   "passed": true,
+   "detail": "16.30s vs target 16.39s"
+  },
+  {
+   "check": "resolution_correct",
+   "passed": true,
+   "detail": "1080x1920"
+  },
+  {
+   "check": "fps_correct",
+   "passed": true,
+   "detail": "30/1"
+  },
+  {
+   "check": "audio_exists",
+   "passed": true,
+   "detail": ""
+  },
+  {
+   "check": "loudness_reasonable",
+   "passed": true,
+   "detail": "input_i=-16.41dB"
+  },
+  {
+   "check": "black_budget_g1",
+   "passed": true,
+   "detail": "0 regions, total 0.00s (0.0%), longest 0.00s (final fadeblack exempt <=0.5s)"
+  },
+  {
+   "check": "luma_profile_g2",
+   "passed": true,
+   "detail": "median=122 near-black=3.0% blown=0 first1sY=70"
+  },
+  {
+   "check": "not_silent_tail",
+   "passed": true,
+   "detail": "intentional fade excluded (2s threshold)"
+  },
+  {
+   "check": "size_reasonable",
+   "passed": true,
+   "detail": "5.1MB < 220MB"
+  },
+  {
+   "check": "captions_burned",
+   "passed": true,
+   "detail": "hook-card differential re-burn test (ass default media/captions.ass; no speech cues): rel deltas [0.0403, 0.0427] (threshold 0.25)"
+  },
+  {
+   "check": "music_credit_on_screen",
+   "passed": true,
+   "detail": "differential re-burn in the outro band at 16.20s (credit window 16.1-18.3s, ass passed via --ass): rel delta [0.0579] below threshold 0.25 - credit line is burned on-screen"
+  }
+ ],
+ "repairs": [],
+ "probe": {
+  "duration": 16.3,
+  "size": 5106128,
+  "loudnorm": {
+   "input_i": "-16.41",
+   "input_tp": "-3.17",
+   "input_lra": "4.50",
+   "input_thresh": "-26.80",
+   "output_i": "-16.63",
+   "output_tp": "-3.75",
+   "output_lra": "4.40",
+   "output_thresh": "-27.06",
+   "normalization_type": "dynamic",
+   "target_offset": "0.63"
+  }
+ }
+}

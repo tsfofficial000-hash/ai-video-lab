@@ -461,7 +461,14 @@ def main():
                 entry.update({"mood": a.mood, "bytes": sz,
                               "mood_fit": f"curated CC-BY fallback list "
                                           f"(declared mood '{a.mood}'; "
-                                          f"no per-item fit metadata)"})
+                                          f"no per-item fit metadata)",
+                              # W4: the sweep's music conclusions must be
+                              # supported - record WHY the curated fallback
+                              # fired (all archive candidates vetoed vs
+                              # egress failures), verbatim rationales
+                              "fallback_reason": list(failures)[:6] or
+                                                ["archive ladder returned "
+                                                 "no candidates"]})
                 print(json.dumps({"status": "ok", **entry}))
                 _write(a.manifest, "music", entry)
                 return

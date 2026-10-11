@@ -1,14 +1,34 @@
-style          grade                  caption              band         cps   music
-sad_emotional  sad_cold               emotional_soft       [0.15, 0.35]  0.29 archive_cc:The Adventures of Sherlock Holmes (mood=sad)
-               mood_fit: neutral metadata - no mood contradiction for 'sad'
-cinematic      cinematic_teal_orange  minimal_clean        [0.3, 0.7]    0.49 archive_cc:The Odyssey (mood=cinematic)
-               mood_fit: neutral metadata - no mood contradiction for 'cinematic'
-motivational   natural                viral_high_contrast  [0.3, 0.7]    0.49 archive_cc:Jack Benny 143 Eps (mood=motivational)
-               mood_fit: neutral metadata - no mood contradiction for 'motivational'
+style          grade                  caption              band         cps   music (POST-VETO re-runs, W4)
+sad_emotional  sad_cold               emotional_soft       [0.15, 0.35]  0.25 incompetech_ccb:Healing (curated CC-BY fallback; archive OTR collections vetoed) run-38127183904 @7759bf4
+               mood_fit: curated CC-BY fallback, declared mood 'sad'; fallback_reason recorded verbatim in the manifest
+cinematic      cinematic_teal_orange  minimal_clean        [0.3, 0.7]    0.49 incompetech_ccb:Healing (curated CC-BY fallback) run-38125437999 @741c2aa
+               mood_fit: curated CC-BY fallback, declared mood 'cinematic'; declared letterbox bar_presence 1.000 (32/32)
+motivational   natural                viral_high_contrast  [0.3, 0.7]    0.49 incompetech_ccb:Healing (curated CC-BY fallback) run-38126219366 @ef1e820
+               mood_fit: curated CC-BY fallback, declared mood 'motivational'; loudness self-heal fired (1 correction, outI -16.0)
 
-assertions: 3 distinct grades ['cinematic_teal_orange', 'natural', 'sad_cold']
+W4 INVALIDATION (audit): the ORIGINAL sweep rows (runs 38108781479/38108784839/38108787972) used
+spoken-word archive items as "music" - "The Adventures of Sherlock Holmes" (librivox audiobook),
+"The Odyssey" (librivox audiobook), "Jack Benny 143 Eps" (OTR radio comedy) - dispatched BEFORE the
+spoken-word veto (7896a2c). Their music mood-fit rows are INVALID. Post-veto re-runs at 42703c0/
+0cba570 still picked OTR collections ("Tales Of The Texas Rangers", "Fibber McGee and Molly - 1942")
+whose search metadata carries no spoken-word marker -> the veto learned OTR/episode-collection shapes
+(52456fa) and the archive search now excludes -collection:OldTimeRadio with a collection-field screen
+(ef1e820). A captions.py plan-total bug (double-counted last segment; w7_credit_window fix 7759bf4)
+pushed the credit event off-screen on scarcity-shrunk plans and was caught by the W1 pixel
+verification - fixed and probed.
+
+assertions (post-veto runs): 3 distinct grades ['cinematic_teal_orange', 'natural', 'sad_cold']
             3 distinct caption styles ['emotional_soft', 'minimal_clean', 'viral_high_contrast']
-            3 distinct music sources ['Jack Benny 143 Eps', 'The Adventures of Sherlock Holmes', 'The Odyssey']
-            bands [(0.15, 0.35), (0.3, 0.7)] (sad_emotional sparse; cinematic native; motivational via DECLARED downshift [[0.3, 0.7]])
-ZERO CONFIG BLEED: every plan param equals its own style config; the only band deviation is the logged style_density_downshift
-E SWEEP: PASS
+            bands [(0.15, 0.35), (0.3, 0.7)] (sad_emotional sparse; cinematic native; motivational native)
+            music: ONE curated CC-BY fallback track (Healing, Kevin MacLeod) - the post-veto archive
+            ladder returns no license-clean music candidates for these moods once OTR/librivox floods
+            are excluded; every pick carries attribution_required with the credit BURNED ON-SCREEN
+            (QC music_credit_on_screen differential pass in all three runs) + manifest + MEDIA_LICENSES
+            mood-fit conclusions: the veto works (zero spoken-word picks in 3 runs); mood-fit is now
+            declared-mood provenance, not keyword serendipity - honest and reproducible
+draft gates: ALL draft gates green in all three runs (G1-G8, G10, G11; G9 pending by design -
+             no stage-11 in the draft loop); G4 bar map + declared letterbox measured; W1 credit
+             pixel-verified on-screen in all three finals
+ZERO CONFIG BLEED: every plan param equals its own style config; no band deviation this round
+                   (the R3 downshift ladder exists and is probed; none of the three styles needed it)
+E SWEEP (POST-VETO): PASS

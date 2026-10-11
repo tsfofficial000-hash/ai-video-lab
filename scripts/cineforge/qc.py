@@ -3,6 +3,7 @@
 Checks: existence, probe, duration, resolution, fps, audio, loudness, black frames,
 silence, captions presence, size, hook motion. Repairs: remux/rescale/renormalize."""
 import argparse
+import glob
 import json
 import os
 import re
@@ -11,6 +12,53 @@ import sys
 
 from utils import jdump, jload, ffprobe_json, record_stage
 import time
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def discover_ass(reports, cap_report):
+    """R2: auto-discover the captions ass when the caller passed no --ass.
+
+    Audit R2: any QC invocation without --ass (e.g. a solo stage-10 dispatch,
+    or 98-iterate draft QC) used the absolute white-ratio fallback, which
+    false-REDs a correctly captioned small-frame video (independent run:
+    captioned 540x960 measured 0.264-0.278% white vs the 0.3% threshold).
+    captions.py now records ass_path inside captions_report.json; this walks
+    the recorded path (absolute, repo-root-relative, media/) plus the known
+    layouts, and only then lets the caller fall back.
+    Returns (ass_path or None, how_it_was_found)."""
+    cands = []
+    rec = (cap_report or {}).get("ass_path")
+    if rec:
+        cands.append((rec, "recorded in captions_report.json"))
+        if not os.path.isabs(rec):
+            cands.append((os.path.join(REPO_ROOT, rec), "recorded path vs repo root"))
+            cands.append((os.path.join(REPO_ROOT, "media", os.path.basename(rec)),
+                          "recorded basename in media/"))
+    cands.append((os.path.join(REPO_ROOT, "media", "captions.ass"),
+                  "default media/captions.ass"))
+    if reports:
+        cands.append((os.path.join(reports, "captions.ass"), "reports dir"))
+    for hit in sorted(glob.glob(os.path.join(REPO_ROOT, "**", "captions.ass"),
+                                recursive=True)):
+        cands.append((hit, "repo glob"))
+    for cand, how in cands:
+        if cand and os.path.isfile(cand):
+            return cand, how
+    return None, "not found"
+
+
+def discover_fontsdir(fontsdir):
+    """R2 companion: a differential re-burn must use the SAME font family as
+    the production burn or the glyph-edge delta is meaningless (different font
+    -> injected edges -> false RED on a correctly captioned final)."""
+    if fontsdir:
+        return fontsdir
+    for cand in (os.environ.get("CF_FONTS_DIR"),
+                 os.path.join(REPO_ROOT, "media", "fonts")):
+        if cand and os.path.isdir(cand) and os.listdir(cand):
+            return cand
+    return None
 
 
 def parse_blackdetect(stderr):
@@ -52,12 +100,17 @@ def caption_band_white_ratio(path, t, band=(0.60, 0.92), white=232):
 
 
 def _band_edge_density(path, t, band, vf_prefix=""):
-    """Mean sobel edge magnitude of the caption band at time t."""
+    """Mean sobel edge magnitude of the caption band at time t.
+    -copyts keeps the ORIGINAL timestamps after input seeking: the ass
+    re-burn (R1/R2 differential test) must be evaluated at the cue's true
+    time, not at seek-shifted t=0 - otherwise events that do not cover 0
+    render nothing and the burn-existence test degenerates into a hidden
+    tautology (measured: brn==nob to 3 decimals without -copyts)."""
     vf = (vf_prefix + "format=gray,"
           f"crop=iw:ih*{band[1]-band[0]:.2f}:0:ih*{band[0]:.2f},"
           "sobel,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-")
     p = subprocess.run(["ffmpeg", "-hide_banner", "-ss", str(t), "-i", path,
-                        "-frames:v", "1", "-vf", vf, "-f", "null", "-"],
+                        "-copyts", "-frames:v", "1", "-vf", vf, "-f", "null", "-"],
                        capture_output=True, text=True)
     m = re.search(r"YAVG=([\d.]+)", p.stdout or "")
     return float(m.group(1)) if m else 0.0
@@ -188,10 +241,20 @@ def check(path, plan, reports, ass=None, fontsdir=None):
 
     # G5: captions burn-existence (D6 pixel test, N1 differential upgrade:
     # bright in-band content can no longer false-pass the absolute ratio)
+    # R2: without --ass, auto-discover the ass recorded by captions.py so the
+    # differential path is the rule, not the exception. The absolute white
+    # ratio remains a LAST-RESORT fallback only, threshold lowered 0.3% ->
+    # 0.15% and always labelled FALLBACK in the detail string.
+    cap_report = jload(reports + "/captions_report.json", {}) if reports else {}
     if not plan.get("caption_style"):
         ok("captions_burned", True, "n/a (plan has no caption_style)")
     else:
-        cr = jload(reports + "/captions_report.json", {}) if reports else {}
+        cr = cap_report
+        if not ass:
+            ass, ass_how = discover_ass(reports, cr)
+        else:
+            ass_how = "passed via --ass"
+        fontsdir = discover_fontsdir(fontsdir)
         cues = cr.get("cues")
         if cues:
             # sample where text is fully visible: never inside the deliberate
@@ -207,7 +270,7 @@ def check(path, plan, reports, ass=None, fontsdir=None):
             diff = differential_caption_check(path, ass, cues, fontsdir=fontsdir)
             if ass and os.path.isfile(ass):
                 ok("captions_burned", bool(diff["passed"]),
-                   f"differential re-burn edge delta at cues: "
+                   f"differential re-burn edge delta at cues (ass {ass_how}): "
                    + ", ".join(f"{c}s={r:.3f}" for c, r in zip(cues, diff["deltas"]))
                    + f" (max rel {diff['max_rel_delta']:.3f} vs threshold "
                      f"{diff['threshold']}; small delta = text already burned)")
@@ -220,9 +283,10 @@ def check(path, plan, reports, ass=None, fontsdir=None):
                         t2 = min(t, dur - 0.1)
                         if all(abs(t2 - c) > 0.15 for c, _ in ratios):
                             ratios.append((t2, caption_band_white_ratio(path, t2, band=(0.16, 0.52))))
-                hits = [(c, r) for c, r in ratios if r >= 0.003]
+                hits = [(c, r) for c, r in ratios if r >= 0.0015]
                 ok("captions_burned", len(hits) >= 2,
-                   f"absolute white-pixel ratio (differential n/a - no ass): "
+                   f"FALLBACK absolute white-pixel ratio 0.15% threshold "
+                   f"(differential n/a - ass {ass_how}): "
                    + ", ".join(f"{c}s={r:.3%}" for c, r in ratios) +
                    f" ({len(hits)}/{len(ratios)} samples show burned text)")
         else:
@@ -235,13 +299,14 @@ def check(path, plan, reports, ass=None, fontsdir=None):
                 diff = differential_caption_check(path, ass, hook_t, fontsdir=fontsdir,
                                                   band=band)
                 ok("captions_burned", bool(diff["passed"]),
-                   "hook-card differential re-burn test (no speech cues): "
+                   f"hook-card differential re-burn test (ass {ass_how}; no speech cues): "
                    f"rel deltas {diff['rel_deltas']} (threshold {diff['threshold']})")
             else:
                 ratios = [(c, caption_band_white_ratio(path, c, band=band)) for c in hook_t]
-                hits = [(c, r) for c, r in ratios if r >= 0.003]
+                hits = [(c, r) for c, r in ratios if r >= 0.0015]
                 ok("captions_burned", len(hits) >= 1,
-                   "hook-card pixel test (no speech cues): " +
+                   "FALLBACK hook-card pixel test 0.15% threshold (no speech cues, "
+                   f"ass {ass_how}): " +
                    ", ".join(f"{c}s={r:.3%}" for c, r in ratios) +
                    f" ({len(hits)}/2 hook samples show burned text, band {band})")
     return results, repairs, {"duration": dur, "size": size, "loudnorm": ln}

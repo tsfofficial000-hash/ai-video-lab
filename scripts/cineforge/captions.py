@@ -358,7 +358,14 @@ def main():
 
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
     open(a.out, "w").write(hdr + "\n".join(events))
+    # R2: record WHERE the ass lives so a QC invocation without --ass can
+    # auto-discover it and run the differential burn test instead of falling
+    # to the absolute white-ratio fallback (which false-REDs correctly
+    # captioned small-frame videos: 0.264-0.278% white vs the old 0.3%
+    # threshold on a 540x960 final). Absolute path - the recorder CWD and the
+    # QC CWD are different jobs in the pipeline.
     jdump({"style": a.style, "events": len(events), "cues": cues[:12],
+           "ass_path": os.path.abspath(a.out),
            "font_caption": cap_font, "font_hook": hook_font,
            "fontsize": fs, "margin_v": mv, "hook_size": hook_size,
            "licenses": {"Montserrat": "OFL", "Anton": "OFL"},

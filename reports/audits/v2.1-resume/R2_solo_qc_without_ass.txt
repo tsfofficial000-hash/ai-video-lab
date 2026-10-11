@@ -1,0 +1,15 @@
+==============================================================================
+R2 PROOF A: solo qc.py CLI, NO --ass, NO --fontsdir (audit false-RED shape)
+==============================================================================
+{"status": "pass", "failed": [], "repairs": [], "details": {"file_exists": "0.2MB", "probe_ok": "", "duration_in_range": "4.00s vs target 4.0s", "resolution_correct": "540x960", "fps_correct": "30/1", "audio_exists": "", "loudness_reasonable": "input_i=-21.86dB", "black_budget_g1": "0 regions, total 0.00s (0.0%), longest 0.00s (final fadeblack exempt <=0.5s)", "luma_profile_g2": "median=97 near-black=0.0% blown=0 first1sY=90", "not_silent_tail": "intentional fade excluded (2s threshold)", "size_reasonable": "0.2MB < 220MB", "captions_burned": "differential re-burn edge delta at cues (ass recorded in captions_report.json): 0.5s=0.258, 2.0s=0.184, 3.35s=0.184 (max rel 0.014 vs threshold 0.25; small delta = text already burned)"}}
+
+>>> captions_burned PASSED via: differential re-burn edge delta at cues (ass recorded in captions_report.json): 0.5s=0.258, 2.0s=0.184, 3.35s=0.184 (max rel 0.014 vs threshold 0.25; small delt
+
+==============================================================================
+R2 PROOF B: same invocation with the ass REMOVED (labelled fallback)
+==============================================================================
+{"status": "pass", "failed": [], "repairs": [], "details": {"file_exists": "0.2MB", "probe_ok": "", "duration_in_range": "4.00s vs target 4.0s", "resolution_correct": "540x960", "fps_correct": "30/1", "audio_exists": "", "loudness_reasonable": "input_i=-21.86dB", "black_budget_g1": "0 regions, total 0.00s (0.0%), longest 0.00s (final fadeblack exempt <=0.5s)", "luma_profile_g2": "median=97 near-black=0.0% blown=0 first1sY=90", "not_silent_tail": "intentional fade excluded (2s threshold)", "size_reasonable": "0.2MB < 220MB", "captions_burned": "FALLBACK absolute white-pixel ratio 0.15% threshold (differential n/a - ass not found): 0.5s=8.476%, 2.0s=8.502%, 3.35s=8.469% (3/3 samples show burned text)"}}
+
+>>> labelled fallback, no false RED: FALLBACK absolute white-pixel ratio 0.15% threshold (differential n/a - ass not found): 0.5s=8.476%, 2.0s=8.502%, 3.35s=8.469% (3/3 samples show burned text)
+
+R2 PROOF: PASS

@@ -197,20 +197,47 @@ def main():
             print(f"[mix] sfx pass skipped: {type(e).__name__}: {e}", flush=True)
 
     # ---- measured output loudness (G6: integrated I must land in [-17,-15]) ----
-    out_i = None
-    try:
-        eb = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", a.out,
-                             "-af", "ebur128=peak=true", "-f", "null", "-"],
-                            capture_output=True, text=True).stderr
-        matches = re.findall(r"I:\s*(-?[\d.]+)\s*LUFS", eb)
-        if matches:
-            out_i = float(matches[-1])
-    except Exception as e:
-        print(f"[mix] loudness measurement skipped: {type(e).__name__}", flush=True)
+    # Ship-run 38109018157 lesson: dynamic speech beds (audiobook narration)
+    # make the single-pass loudnorm under-correct (outI -14.6 vs band ceiling
+    # -15) and the run dies at stage-10. The mix now VERIFIES its own output
+    # and applies corrective loudnorm passes (max 2, each measured + logged).
+    def measure_out_i(path):
+        try:
+            eb = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", path,
+                                 "-af", "ebur128=peak=true", "-f", "null", "-"],
+                                capture_output=True, text=True).stderr
+            matches = re.findall(r"I:\s*(-?[\d.]+)\s*LUFS", eb)
+            return float(matches[-1]) if matches else None
+        except Exception as e:
+            print(f"[mix] loudness measurement skipped: {type(e).__name__}", flush=True)
+            return None
+
+    out_i = measure_out_i(a.out)
+    corrections = []
+    for attempt in range(2):
+        if out_i is not None and -17.0 <= out_i <= -15.0:
+            break
+        why = (f"outI {out_i} outside [-17,-15]" if out_i is not None
+               else "loudness measurement failed")
+        ln_path = a.out + f".ln{attempt}.wav"
+        print(f"[mix] loudness correction #{attempt + 1}: {why} -> corrective "
+              f"loudnorm pass", flush=True)
+        pc = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", a.out,
+                             "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+                             "-ar", "48000", "-ac", "2", ln_path],
+                            capture_output=True, text=True)
+        if pc.returncode != 0 or not os.path.isfile(ln_path):
+            print(f"[mix] correction pass failed (kept mix): "
+                  f"{(pc.stderr or '')[-200:]}", flush=True)
+            break
+        os.replace(ln_path, a.out)
+        out_i = measure_out_i(a.out)
+        corrections.append({"attempt": attempt + 1, "reason": why,
+                            "out_i_after": out_i})
 
     jdump({"mode": mode, "music": a.music, "target": "I=-16 TP=-1.5 LRA=11",
            "denoise": a.denoise, "duck_depth_db": depth, "duck_windows": n_win,
-           "output_i": out_i,
+           "output_i": out_i, "loudness_corrections": corrections,
            "sfx_mixed": sfx_mixed, "out": a.out}, f"{a.reports}/audio_mix_report.json")
     record_stage(a.reports, "07-audio-mix", "success", t0=t0,
                  bottleneck="none (single-pass ffmpeg)",

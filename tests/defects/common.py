@@ -27,6 +27,51 @@ def pick_font():
     return cands[-1]
 
 
+def font_family_name(path):
+    """W2: exact family name from a TTF/OTF name table (nameID 16 preferred,
+    then 1) - filename-derived families break libass matching in clean
+    checkouts (e.g. DejaVuSans-Bold.ttf's real family is 'DejaVu Sans').
+    Probes embed this exact name into their synthetic ass Style lines and
+    pass the font's dir as fontsdir, so resolution never relies on
+    fontconfig fallback."""
+    import struct
+    try:
+        data = open(path, "rb").read()
+        if len(data) < 12 or data[:4] not in (b"\x00\x01\x00\x00", b"OTTO",
+                                              b"true", b"ttcf"):
+            return None
+        num = struct.unpack(">H", data[4:6])[0]
+        name_off = None
+        for i in range(num):
+            off = 12 + i * 16
+            if data[off:off + 4] == b"name":
+                name_off = struct.unpack(">I", data[off + 8:off + 12])[0]
+                break
+        if not name_off or name_off + 6 > len(data):
+            return None
+        count, str_off = struct.unpack(">HH", data[name_off + 2:name_off + 6])
+        best = None
+        for j in range(count):
+            rec = name_off + 6 + j * 12
+            if rec + 12 > len(data):
+                break
+            pid, eid, _lid, nid, ln, so = struct.unpack(">6H", data[rec:rec + 12])
+            if nid not in (16, 1):
+                continue
+            start = name_off + str_off + so
+            raw = data[start:start + ln]
+            try:
+                val = raw.decode("utf-16-be") if pid in (0, 3) else raw.decode("latin-1")
+            except Exception:
+                continue
+            key = (nid == 16, pid in (0, 3))
+            if best is None or key > best[0]:
+                best = (key, val)
+        return best[1].strip() if best else None
+    except Exception:
+        return None
+
+
 def cf_path(*parts):
     return os.path.join(REPO, *parts)
 

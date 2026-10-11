@@ -7,8 +7,10 @@ import glob
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 from utils import jdump, jload, ffprobe_json, record_stage
 import time
@@ -116,6 +118,99 @@ def _band_edge_density(path, t, band, vf_prefix=""):
     return float(m.group(1)) if m else 0.0
 
 
+def _band_luma_mean(path, t, band, vf_prefix=""):
+    """Mean luma of the band at time t (no sobel) - the W2 control signal:
+    white control text on a black synthetic frame is a 30+ YAVG injection
+    when fonts resolve, exactly 0.0 when nothing renders."""
+    vf = (vf_prefix + "format=gray,"
+          f"crop=iw:ih*{band[1]-band[0]:.2f}:0:ih*{band[0]:.2f},"
+          "signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-")
+    p = subprocess.run(["ffmpeg", "-hide_banner", "-ss", str(t), "-i", path,
+                        "-copyts", "-frames:v", "1", "-vf", vf, "-f", "null", "-"],
+                       capture_output=True, text=True)
+    m = re.search(r"YAVG=([\d.]+)", p.stdout or "")
+    return float(m.group(1)) if m else 0.0
+
+
+def _ass_families(ass_path):
+    """Unique font families declared in the ass Style lines (W2 self-test
+    scope: every family the re-burn must resolve)."""
+    fams = []
+    for ln in open(ass_path, errors="ignore"):
+        if ln.startswith("Style:"):
+            parts = ln.split(",")
+            if len(parts) >= 2:
+                fam = parts[1].strip()
+                if fam and fam not in fams:
+                    fams.append(fam)
+    return fams
+
+
+_FONTSEL_CACHE = {}
+
+
+def fonts_resolvable(ass_path, fontsdir, w=540, h=960):
+    """W2 SELF-TEST: prove the burn path can render SOMETHING before any
+    differential delta is trusted.
+
+    Method: a control ass carrying the ass-under-test's own families and a
+    known-text 1-frame event is re-burned onto a synthetic black frame using
+    the EXACT burn configuration (same ass filter construction, same
+    fontsdir - never a fontconfig fallback). White text on black injects a
+    large luma delta (measured 34.6 YAVG on 540x960); an unresolvable family
+    (clean checkout: no system fonts, family missing from CF_FONTS_DIR)
+    injects exactly 0.0 - which previously let the differential report
+    deltas 0.000 and PASS an uncaptioned video (tautology confirmed by the
+    v2.2 audit).
+
+    Returns False (unmeasurable) when any declared family injects no edges.
+    Result is cached per (ass, fontsdir, size)."""
+    if not ass_path or not os.path.isfile(ass_path):
+        return False
+    key = (os.path.abspath(ass_path),
+           os.path.abspath(fontsdir) if fontsdir else "", int(w), int(h))
+    if key in _FONTSEL_CACHE:
+        return _FONTSEL_CACHE[key]
+    fams = _ass_families(ass_path)
+    passed = bool(fams)
+    td = tempfile.mkdtemp(prefix="qcfontctl")
+    try:
+        clip = os.path.join(td, "ctl.mp4")
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-f", "lavfi",
+             "-i", f"color=c=black:s={int(w)}x{int(h)}:d=0.5:r=30",
+             "-frames:v", "15", "-c:v", "libx264", "-preset", "ultrafast",
+             "-pix_fmt", "yuv420p", clip],
+            check=True, capture_output=True)
+        ctrl = os.path.join(td, "ctl.ass")
+        hdr = (["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {int(w)}",
+                f"PlayResY: {int(h)}", "", "[V4+ Styles]",
+                "Format: Name, Fontname, Fontsize, PrimaryColour, "
+                "OutlineColour, Bold, Outline, Shadow, Alignment, "
+                "MarginL, MarginR, MarginV, Encoding"])
+        lines = list(hdr)
+        for i, fam in enumerate(fams):
+            lines.append(f"Style: Ctrl{i},{fam},{int(h * 0.18)},"
+                         "&H00FFFFFF,&H00000000,1,3,0,5,16,16,16,1")
+        lines.append("[Events]")
+        lines.append("Format: Layer, Start, End, Style, Name, MarginL, "
+                     "MarginR, MarginV, Effect, Text")
+        for i in range(len(fams)):
+            lines.append(f"Dialogue: 0,0:00:00.05,0:00:00.45,Ctrl{i},,0,0,0,,"
+                         "FONT Ab")
+        open(ctrl, "w").write("\n".join(lines) + "\n")
+        vf = f"ass={ctrl}" + (f":fontsdir={fontsdir}" if fontsdir else "") + ","
+        nob = _band_luma_mean(clip, 0.25, (0.25, 0.75))
+        brn = _band_luma_mean(clip, 0.25, (0.25, 0.75), vf)
+        passed = passed and (brn - nob) >= 3.0
+    except Exception:
+        passed = False
+    finally:
+        shutil.rmtree(td, ignore_errors=True)
+    _FONTSEL_CACHE[key] = passed
+    return passed
+
+
 def _ass_seconds(ts_str):
     """ASS H:MM:SS.CC -> seconds (W1 credit-window parsing)."""
     h, m, s = ts_str.strip().split(":")
@@ -158,6 +253,12 @@ def differential_caption_check(video, ass, cues, fontsdir=None,
         -> PASS (measured: 4% on crf23 text)
       - text absent -> the burn injects full glyph edges -> huge delta
         -> FAIL (measured: 595%; the bright band itself contributes 0 delta)
+
+    W2: deltas are only trusted AFTER the self-test proves the burn path can
+    render text at all (fonts_resolvable). A clean checkout with no system
+    fonts and a family missing from CF_FONTS_DIR renders nothing -> deltas
+    0.000 -> the old code PASSED an uncaptioned video. Unmeasurable is now
+    RED with reason 'font resolution failed - differential not measurable'.
     """
     if not ass or not os.path.isfile(ass):
         return {"passed": False, "deltas": [], "rel_deltas": [], "max_delta": 0.0,
@@ -167,6 +268,20 @@ def differential_caption_check(video, ass, cues, fontsdir=None,
         return {"passed": False, "deltas": [], "rel_deltas": [], "max_delta": 0.0,
                 "max_rel_delta": 0.0, "threshold": max_rel_delta,
                 "reason": "ass has no Dialogue events - nothing was ever burned"}
+    # W2 self-test BEFORE trusting any delta (cached per ass+fontsdir+size)
+    dims = (540, 960)
+    try:
+        pr = ffprobe_json(video)
+        vs = next((s for s in pr.get("streams", [])
+                   if s.get("codec_type") == "video"), None)
+        if vs and vs.get("width"):
+            dims = (int(vs["width"]), int(vs["height"]))
+    except Exception:
+        pass
+    if not fonts_resolvable(ass, fontsdir, w=dims[0], h=dims[1]):
+        return {"passed": False, "deltas": [], "rel_deltas": [], "max_delta": 0.0,
+                "max_rel_delta": 0.0, "threshold": max_rel_delta,
+                "reason": "font resolution failed - differential not measurable"}
     burn_vf = f"ass={ass}" + (f":fontsdir={fontsdir}" if fontsdir else "") + ","
     deltas, rels = [], []
     for t in list(cues)[:3]:
@@ -175,6 +290,16 @@ def differential_caption_check(video, ass, cues, fontsdir=None,
         d = abs(brn - nob)
         deltas.append(round(d, 3))
         rels.append(d / max(nob, 5.0))
+        if nob <= 0.5 and brn <= 0.5:
+            # both measurements flat: the frame extraction produced nothing
+            # measurable (void band) - trusting delta 0 here would be a
+            # second-order tautology (W2 evidence law: unmeasurable = RED)
+            return {"passed": False, "deltas": deltas, "rel_deltas": rels,
+                    "max_delta": max(deltas) if deltas else 0.0,
+                    "max_rel_delta": round(max(rels), 4) if rels else 0.0,
+                    "threshold": max_rel_delta,
+                    "reason": f"void band measurement at {t:.2f}s - both "
+                              f"burned and unburned frames read 0 edges"}
     n_changed = sum(1 for r in rels if r >= max_rel_delta)
     return {"passed": bool(rels) and n_changed == 0,
             "deltas": deltas,
@@ -300,11 +425,13 @@ def check(path, plan, reports, ass=None, fontsdir=None):
             cues = sorted(set(cues))
             diff = differential_caption_check(path, ass, cues, fontsdir=fontsdir)
             if ass and os.path.isfile(ass):
+                reason = f" - {diff['reason']}" if diff.get("reason") else ""
                 ok("captions_burned", bool(diff["passed"]),
                    f"differential re-burn edge delta at cues (ass {ass_how}): "
                    + ", ".join(f"{c}s={r:.3f}" for c, r in zip(cues, diff["deltas"]))
                    + f" (max rel {diff['max_rel_delta']:.3f} vs threshold "
-                     f"{diff['threshold']}; small delta = text already burned)")
+                     f"{diff['threshold']}; small delta = text already burned)"
+                   + reason)
             else:
                 ratios = [(c, caption_band_white_ratio(path, c)) for c in cues]
                 if len(ratios) < 3:
@@ -329,9 +456,11 @@ def check(path, plan, reports, ass=None, fontsdir=None):
             if ass and os.path.isfile(ass):
                 diff = differential_caption_check(path, ass, hook_t, fontsdir=fontsdir,
                                                   band=band)
+                reason = f" - {diff['reason']}" if diff.get("reason") else ""
                 ok("captions_burned", bool(diff["passed"]),
                    f"hook-card differential re-burn test (ass {ass_how}; no speech cues): "
-                   f"rel deltas {diff['rel_deltas']} (threshold {diff['threshold']})")
+                   f"rel deltas {diff['rel_deltas']} (threshold {diff['threshold']})"
+                   + reason)
             else:
                 ratios = [(c, caption_band_white_ratio(path, c, band=band)) for c in hook_t]
                 hits = [(c, r) for c, r in ratios if r >= 0.0015]

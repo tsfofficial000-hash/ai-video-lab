@@ -16,6 +16,8 @@ PROBES = ["d1_blackdetect.py", "d2_delivery_bundle.py", "d3_selection.py",
           "e4_target_fidelity.py", "e5_hook_candidates.py", "e6_diversity.py",
           "e7_endcard.py"]
 NITS = ["nits.py"]
+# v2.2 audit findings W1-W6 (each closed with probe + fix + one commit)
+WPROBES = ["w1_credit_burn.py"]
 
 
 def run_list(names):
@@ -48,9 +50,16 @@ def main():
     n_fixed = sum(1 for _, s, _, _ in n_rows if s == "FIXED")
     print(f"nits: {n_fixed}/{len(NITS)}")
 
-    if infra_err or n_err:
+    w_rows, w_err = run_list(WPROBES)
+    for name, status, rc, tail in w_rows:
+        print(f"{name:28} {status:10} {rc:>3}  {tail}")
+    w_present = sum(1 for _, s, _, _ in w_rows if s == "PRESENT")
+    print(f"v2.2 audit findings W: {len(w_rows) - w_present}/{len(WPROBES)} closed")
+
+    if infra_err or n_err or w_err:
         return 2
-    return 0 if (n_present == 0 and n_fixed == len(NITS)) else 1
+    return 0 if (n_present == 0 and n_fixed == len(NITS)
+                 and w_present == 0) else 1
 
 
 if __name__ == "__main__":

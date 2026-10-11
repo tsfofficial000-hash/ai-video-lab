@@ -28,6 +28,10 @@ jobs:
         with: { name: stage-04-transcript, path: reports }
       - uses: actions/download-artifact@v4
         with: { name: stage-05-beats, path: reports }
+      # W1: the music license manifest must reach edit_plan.py, else
+      # plan.music_credit stays None and the CC-BY credit never burns.
+      - uses: actions/download-artifact@v4
+        with: { name: stage-01-manifest, path: reports }
       - name: Build EDL
         run: |
           set -e

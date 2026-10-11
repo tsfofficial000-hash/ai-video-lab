@@ -116,6 +116,37 @@ def _band_edge_density(path, t, band, vf_prefix=""):
     return float(m.group(1)) if m else 0.0
 
 
+def _ass_seconds(ts_str):
+    """ASS H:MM:SS.CC -> seconds (W1 credit-window parsing)."""
+    h, m, s = ts_str.strip().split(":")
+    return int(h) * 3600 + int(m) * 60 + float(s)
+
+
+def credit_event_window(ass_path, credit_text):
+    """W1: (start, end) seconds of the Dialogue event carrying the music
+    credit string, or None when the ass has no such event. The text field
+    is matched tag-stripped and whitespace-normalized; commas inside the
+    credit are safe because the text is the last ASS field."""
+    if not ass_path or not os.path.isfile(ass_path):
+        return None
+    needle = " ".join(str(credit_text).split())[:40]
+    if not needle:
+        return None
+    for ln in open(ass_path, errors="ignore"):
+        if not ln.startswith("Dialogue:"):
+            continue
+        parts = ln.rstrip("\n").split(",", 9)
+        if len(parts) < 10:
+            continue
+        text = re.sub(r"\{[^}]*\}", "", parts[9])
+        if needle in " ".join(text.split()):
+            try:
+                return _ass_seconds(parts[1]), _ass_seconds(parts[2])
+            except ValueError:
+                return None
+    return None
+
+
 def differential_caption_check(video, ass, cues, fontsdir=None,
                                band=(0.60, 0.92), max_rel_delta=0.25):
     """N1: DIFFERENTIAL caption burn-existence (replaces the absolute white
@@ -309,6 +340,52 @@ def check(path, plan, reports, ass=None, fontsdir=None):
                    f"ass {ass_how}): " +
                    ", ".join(f"{c}s={r:.3%}" for c, r in ratios) +
                    f" ({len(hits)}/2 hook samples show burned text, band {band})")
+
+    # W1: CC-BY attribution must be ON the work. When the plan carries a
+    # music credit (attribution_required source), QC pixel-verifies the
+    # credit line in the outro band: structurally (the ass carries a
+    # music_credit Dialogue event) and differentially (re-burn in the
+    # bottom band inside the credit window must be idempotent). Any
+    # unmeasurable leg is RED - evidence law, never a silent pass.
+    credit = plan.get("music_credit")
+    if not credit:
+        ok("music_credit_on_screen", True, "n/a (plan carries no music credit)")
+    else:
+        if not ass:
+            ass, ass_how = discover_ass(reports, cap_report)
+        else:
+            ass_how = "passed via --ass"
+        win = credit_event_window(ass, credit) if ass and os.path.isfile(ass) else None
+        if not win:
+            ok("music_credit_on_screen", False,
+               f"UNMEASURABLE=RED: credit event missing from ass ({ass_how}) "
+               f"- attribution was never emitted for burning "
+               f"(credit: {str(credit)[:58]}...)")
+        else:
+            c0, c1 = win
+            cue = min(dur - 0.1, max(c0 + 0.5, (c0 + c1) / 2.0))
+            if not (c0 <= cue <= c1):
+                ok("music_credit_on_screen", False,
+                   f"UNMEASURABLE=RED: credit window {c0:.1f}-{c1:.1f}s falls "
+                   f"outside the final duration {dur:.2f}s - attribution "
+                   f"cannot be pixel-verified")
+            else:
+                fdir = discover_fontsdir(fontsdir)
+                diff = differential_caption_check(path, ass, [cue], fontsdir=fdir,
+                                                  band=(0.90, 1.0))
+                if diff["passed"]:
+                    ok("music_credit_on_screen", True,
+                       f"differential re-burn in the outro band at {cue:.2f}s "
+                       f"(credit window {c0:.1f}-{c1:.1f}s, ass {ass_how}): "
+                       f"rel delta {diff['rel_deltas']} below threshold "
+                       f"{diff['threshold']} - credit line is burned on-screen")
+                else:
+                    ok("music_credit_on_screen", False,
+                       f"credit line NOT verified in the outro band "
+                       f"(credit window {c0:.1f}-{c1:.1f}s, ass {ass_how}): "
+                       f"rel deltas {diff['rel_deltas']} vs threshold "
+                       f"{diff['threshold']} - "
+                       f"{diff.get('reason') or 're-burn injected credit glyphs'}")
     return results, repairs, {"duration": dur, "size": size, "loudnorm": ln}
 
 

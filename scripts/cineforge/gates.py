@@ -302,6 +302,31 @@ def main():
                + "; ".join(f"{k}={(v or {}).get('license')}" for k, v in entries.items())
                ) if entries else "manifest empty/missing"
 
+    # ---- G10 attribution clause (W1): attribution must be ON the work ----
+    # A manifested CC-BY music track obliges the shipped frames to carry the
+    # credit; repo-side text alone does not satisfy the E3 contract for a
+    # published Short. The full chain is asserted: manifest says
+    # attribution_required -> plan.music_credit == manifest.music.credit ->
+    # qc_report's music_credit_on_screen pixel verification passed.
+    music_meta = (manifest.get("music") or {}) if isinstance(manifest, dict) else {}
+    if music_meta.get("attribution_required") and music_meta.get("credit"):
+        plan_credit = plan.get("music_credit")
+        qc_checks = {c.get("check"): c for c in (qc.get("checks") or [])} \
+            if isinstance(qc, dict) else {}
+        credit_px = qc_checks.get("music_credit_on_screen") or {}
+        bits = []
+        if plan_credit != music_meta.get("credit"):
+            bits.append("plan.music_credit missing (stage-06 manifest wiring)"
+                        if not plan_credit else
+                        "plan.music_credit != manifest.music.credit")
+        if not credit_px.get("passed"):
+            bits.append(f"outro-band pixel verification: "
+                        f"{(credit_px.get('detail') or 'qc check absent')[:120]}")
+        g10 = bool(g10) and not bits
+        g10_val += (" | attribution: ON-SCREEN (plan==manifest credit, QC "
+                    "differential pass)" if not bits else
+                    " | attribution BROKEN - " + "; ".join(bits))
+
     # ---- G11 TARGET FIDELITY (E4): delivered >= 0.80 x requested ----
     # Silent shrink is RED. An honest target_impossible_note (with max
     # achievable + declared relaxations) is the only alternative pass.

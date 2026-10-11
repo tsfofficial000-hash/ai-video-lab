@@ -91,3 +91,12 @@ jobs:
             media/music.mp3
             reports/media_manifest.json
           retention-days: 3
+      # W1: tiny manifest-only artifact so stage-06 can read the music
+      # license metadata without pulling the multi-MB source.mp4 payload.
+      # Without it plan.music_credit stays None and the CC-BY credit is
+      # never burned onto the published Short (attribution-with-the-work).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage-01-manifest
+          path: reports/media_manifest.json
+          retention-days: 3

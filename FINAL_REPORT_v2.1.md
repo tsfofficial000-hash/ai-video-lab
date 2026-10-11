@@ -6,9 +6,20 @@ ship run **38109649950** — **G1–G11 ALL GREEN with measured numbers**, wall
 424 s, max job setup 23 s, 18.37 s 1080×1920 deliverable from the `source-v1`
 (Sintel) cache. The resume mandate (Phases D2/E/F + audit findings R1–R5) is
 closed: the last visual-bug class is dead at the pixel level, real licensed
-music ships with on-screen attribution, target fidelity is an enforced gate
-with a declared relaxation ladder, and every gate a report claims is now
-reproducible from committed artifacts alone.
+music ships, target fidelity is an enforced gate with a declared relaxation
+ladder, and every gate a report claims is now reproducible from committed
+artifacts alone.
+
+> **CORRECTION (v2.2 audit, finding W1).** The claim that v2.1 ships
+> "on-screen attribution" was FALSE for the artifact: stage-06 never
+> downloaded the stage-01 media manifest, so `plan.music_credit` was `None`
+> and **no credit was burned** into the released `cineforge-v2.1` MP4
+> (verified on run 38109649950's committed `edit_plan.json`). Repo-side
+> license text does not satisfy attribution-with-the-work for a published
+> Short. The fix (manifest wiring + `music_credit_on_screen` QC pixel
+> verification + G10 attribution clause) ships with release
+> **`cineforge-v2.1.1`, the first release that carries the burned credit**.
+> The affected lines in this report are annotated inline.
 
 ## 1. Gate table — before / after (all values measured, artifact-backed)
 
@@ -19,11 +30,11 @@ reproducible from committed artifacts alone.
 | G3 selection | wrap=False, overlaps 0, 23 selected | wrap=False, 13 selected | **wrap=False, 9 selected (full effective capacity)** |
 | G4 layout | by-construction (`fg=full-bleed` — never looked at pixels) | **MEASURED bar_fraction=0.000** (0/19 samples) | **bar_fraction=0.000 (0/36 samples, top8/bottom8% Y≥25)** |
 | G5 typography | pixelTest=True (differential via explicit `--ass`) | pixelTest=True + hookInCands + wordComplete | **pixelTest=True via R2 auto-discovered differential (max rel 0.026) + hook word-complete** |
-| G6 audio | duck 13.04 dB, outI −16.3, music=**synth** | duck 13.1 dB, outI −15.3, via=archive_cc (**mood-blind**) | **duck 13.07 dB, outI −15.2 (verify-and-correct loop), via=incompetech_ccb "Healing" CC-BY with burned credit** |
+| G6 audio | duck 13.04 dB, outI −16.3, music=**synth** | duck 13.1 dB, outI −15.3, via=archive_cc (**mood-blind**) | **duck 13.07 dB, outI −15.2 (verify-and-correct loop), via=incompetech_ccb "Healing" CC-BY** *(credit NOT burned in v2.1 — W1; burned from v2.1.1)* |
 | G7 pacing | 1.29 cps, band [1.2,2.0], align 0 ms | 1.28 cps, clustersMax 2, pseudo 75% | **0.49 cps in the DECLARED downshifted band [0.3,0.7], clustersMax 2, pseudo 62%** |
 | G8 evidence | 3/3 reports | 3/3 | **3/3 + 10-file committed evidence set (R5)** |
 | G9 latency | wall 451 s, setup 32 s | wall 392 s, setup 26 s | **wall 424 s, setup 23 s** |
-| G10 free | music = in-pipeline synth | music = CC0 archive (unchecked mood) | **music = CC BY 4.0 (incompetech, attribution rendered) + CC-BY 4.0 source; zero paid calls** |
+| G10 free | music = in-pipeline synth | music = CC0 archive (unchecked mood) | **music = CC BY 4.0 (incompetech) + CC-BY 4.0 source; zero paid calls** *(v2.1 attribution was manifest-only, not on-screen — W1; G10 attribution clause added in v2.1.1)* |
 | G11 fidelity | (gate did not exist; 17.5 s vs 30 s silent) | 10.0 s vs 30 s = 33%, honest impossibility, **no downshift attempted** | **18.4 s vs 30 s = 61%, honest impossibility AFTER the logged style-density downshift (L1→L2→L3 ladder full)** |
 
 ### Music-source census (the E3/R4 arc)
@@ -33,7 +44,7 @@ reproducible from committed artifacts alone.
 | v2.0 (37891911705) | synth_fallback | generated pad | real-music mandate unmet |
 | 38043976013 | archive_cc | **geometry_dash_1.9** (game OST, CC0) | license-safe, mood-blind — audit's R4 case |
 | E-sweep drafts | archive_cc | Sherlock Holmes (sad) / The Odyssey (cinematic, **librivox audiobook — caught post-hoc**) / Jack Benny (motivational) | screened with 1-line rationales; audiobook hole found |
-| **38109649950 (ship)** | incompetech_ccb | **"Healing" — Kevin MacLeod, CC BY 4.0** | mood-appropriate ambient score, attribution burned on-screen + manifest + MEDIA_LICENSES |
+| **38109649950 (ship)** | incompetech_ccb | **"Healing" — Kevin MacLeod, CC BY 4.0** | mood-appropriate ambient score; manifest + MEDIA_LICENSES correct, but the on-screen credit was **NOT** burned in v2.1 (W1: stage-06 manifest wiring gap, `plan.music_credit=None`) — burned on-screen from **v2.1.1** onward |
 
 ### G11 target-fidelity outcomes
 
@@ -98,7 +109,7 @@ default media/captions.ass").
 |---|---|---|
 | Bar-death (E1/E2) stays dead | 0.97 | measured bar_fraction 0.000 on 36 edge samples, ship run; 0.000 on run 3's 19 samples; old draft letterbox now VISIBLE to the same gate |
 | Caption claims (R1/R2) | 0.95 | differential path asserted by the hermetic probe + solo-CLI proof; the seek-shift tautology (would have masked any regression) is fixed and pinned |
-| Music rights cleanliness (G10) | 0.97 | CC0/CC-BY only, manifest + burned credit + MEDIA_LICENSES; synth fallback now gated behind logged egress failure |
+| Music rights cleanliness (G10) | 0.97 → 0.72 for v2.1 as shipped | CC0/CC-BY only, manifest + MEDIA_LICENSES; synth fallback gated behind logged egress failure. Downgraded: the v2.1 artifact lacked the on-screen credit (W1) — restored to 0.97 by the v2.1.1 re-ship with the burned credit + G10 attribution clause |
 | Music mood fit | 0.85 | "Healing" tonally reviewed at 8.5; screen is keyword/tag-based, not audio analysis — fallback provenance honestly logged |
 | G11 honesty | 0.9 | ladder fully attempted + logged; delivered = entire effective capacity; the 18.4-vs-30 s gap is structural (7 clusters × cap 2), not silent |
 | Gate reproducibility from git alone | 0.9 | 10-file evidence set committed per run (R5); every gate value carries an artifact path |

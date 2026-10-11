@@ -359,17 +359,40 @@ def main():
             d["reason"] = f["reason"] + (" -> caption below face bbox" if f["bbox"]
                                          else " -> bottom safe-zone")
 
-    # ---- E3: CC-BY music credit as a 1-line outro event (never truncated) ----
+    # ---- E3: CC-BY music credit as an outro event (NEVER truncated) ----
     credit = plan.get("music_credit")
     if credit:
         c_fs = max(28, int(h * 0.018))
+        max_w = 0.92 * w
+        credit_lines = [credit]
+        # W1-CI fit fix (ship run 38128752534 evidence): 74 chars at fs 34 is
+        # ~1150px on a 1080-wide frame - "Music: " clipped at the left and
+        # "BY 4.0" clipped at the right. Incomplete attribution is not
+        # attribution. Shrink to fit ONE line first (floor 22); wrap into
+        # two balanced lines only when even the floor cannot fit (long
+        # credits on narrow frames).
+        if len(credit) * 0.55 * c_fs > max_w:
+            fit_fs = int(max_w / (0.55 * max(len(credit), 1)))
+            if fit_fs >= 22:
+                c_fs = fit_fs
+            else:
+                mid = credit.rfind(" ", 0, len(credit) // 2 + 1)
+                if mid < 1:
+                    mid = credit.find(" ", len(credit) // 2)
+                if mid < 1:
+                    mid = len(credit) // 2
+                credit_lines = [credit[:mid].rstrip(), credit[mid + 1:].lstrip()]
+                c_fs = max(22, min(c_fs, int(max_w / (0.55 * max(len(l) for l in credit_lines)))))
         c_y = int(h * 0.962)                      # below end-card block, inside
         c0, c1 = max(0.0, plan_total - 2.4), max(0.5, plan_total - 0.2)
         tags = (r"{\pos(" + f"{w // 2},{c_y})" + rf"\fs{c_fs}" + r"\alpha&H33&}")
-        events.append(f"Dialogue: 1,{ts(c0)},{ts(c1)},Cine,,0,0,0,,{tags}{credit}")
+        body = r"\N".join(credit_lines)
+        events.append(f"Dialogue: 1,{ts(c0)},{ts(c1)},Cine,,0,0,0,,{tags}{body}")
         decisions.append({"cue": round(c0, 2), "element": "music_credit",
-                          "placement": f"y={c_y} size={c_fs}",
-                          "reason": "CC-BY attribution burned in outro (E3)",
+                          "placement": f"y={c_y} size={c_fs} lines={len(credit_lines)}",
+                          "reason": "CC-BY attribution burned in outro (E3), "
+                                    "width-fit one-line first (W1-CI: never "
+                                    "truncated)",
                           "face": None})
 
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)

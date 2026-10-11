@@ -82,14 +82,18 @@ def run_edit_plan(td, reports):
 
 
 def run_captions(td, reports):
+    return run_captions_res(td, reports, "540x960")
+
+
+def run_captions_res(td, reports, resolution):
     """captions.py from a neutral CWD - CWD-relative outputs stay in td."""
-    ass_p = os.path.join(td, "captions.ass")
+    ass_p = os.path.join(td, f"captions_{resolution.replace('x', '_')}.ass")
     tr = os.path.join(reports, "transcript.json")
     plan_p = os.path.join(reports, "edit_plan.json")
     r = subprocess.run(
         [sys.executable, cf_path("scripts/cineforge/captions.py"),
          "--transcript", tr, "--plan", plan_p, "--style", "minimal_clean",
-         "--out", ass_p, "--resolution", "540x960"],
+         "--out", ass_p, "--resolution", resolution],
         capture_output=True, text=True, cwd=td)
     if not os.path.isfile(ass_p):
         fail(f"captions.py produced no ass: {(r.stderr or r.stdout)[-400:]}")
@@ -102,7 +106,10 @@ def ass_dialogues(ass_p):
         if ln.startswith("Dialogue:"):
             parts = ln.rstrip("\n").split(",", 9)
             if len(parts) >= 10:
-                text = re.sub(r"\{[^}]*\}", "", parts[9]).strip()
+                # strip override tags AND normalize a width-fit credit's
+                # two-line \N break before matching (W1-CI)
+                text = re.sub(r"\{[^}]*\}", "", parts[9])
+                text = " ".join(re.sub(r"\\N|\\n", " ", text).split())
                 rows.append((parts[1], parts[2], text))
     return rows
 
@@ -196,6 +203,46 @@ def main():
             fail(f"credit event must sit in the outro (start {c0:.2f}s vs plan "
                  f"total {plan_dur:.2f}s)")
         ok(f"ass carries the credit event at {c0:.2f}-{ass_seconds(credit_rows[0][1]):.2f}s")
+
+        # ---- 3b) WIDTH-FIT: the burned credit must not be truncated ----
+        # (ship run 38128752534 evidence: 74 chars at fs 34 clipped "Music: "
+        # off the left edge and "BY 4.0" off the right - incomplete
+        # attribution). At 1080x1920 the event must carry a font size whose
+        # estimated width fits 92% of the frame (one-line fit), and the full
+        # credit string must survive into the event text.
+        ass_full = run_captions_res(td, reports, "1080x1920")
+        m = re.search(r"Dialogue:[^\n]*\\fs(\d+)[^\n]*" + re.escape(CREDIT[:30]),
+                      open(ass_full, errors="ignore").read())
+        if not m:
+            fail("no credit event with a \\fs tag found at 1080x1920")
+        fs_used = int(m.group(1))
+        est_w = len(CREDIT) * 0.55 * fs_used
+        if est_w > 0.92 * 1080:
+            fail(f"W1-CI present: credit at fs {fs_used} estimates "
+                 f"{est_w:.0f}px > 92% of 1080 - the attribution would clip "
+                 f"(ship evidence: fs 34 clipped both ends)")
+        ok(f"width-fit credit: fs {fs_used}, est {est_w:.0f}px <= 993px "
+           f"(0.92 x 1080) - never truncated")
+
+        # narrow frame: two-line wrap keeps every word
+        ass_narrow = run_captions_res(td, reports, "540x960")
+        narrow_txt = open(ass_narrow, errors="ignore").read()
+        credit_ln = next((ln for ln in narrow_txt.splitlines()
+                          if ln.startswith("Dialogue:")
+                          and "LICENSED UNDER" in ln.upper()), None)
+        if credit_ln:
+            m2 = re.search(r"\\fs(\d+)", credit_ln)
+            body = re.sub(r"\{[^}]*\}", "",
+                          credit_ln.split(",", 9)[9]).replace(r"\N", " ")
+            body_norm = " ".join(body.split()).upper()
+            credit_norm = " ".join(CREDIT.split()).upper()
+            if body_norm != credit_norm:
+                fail(f"wrapped credit must keep EVERY word "
+                     f"(got {body_norm[:70]!r})")
+            ok(f"narrow-frame credit wraps at fs {m2.group(1)} - every word "
+               f"preserved")
+        else:
+            fail("no credit event found in the 540x960 ass")
 
         # ---- 4) PIXEL: QC verifies the credit in the outro band ----
         with tempfile.TemporaryDirectory() as pd:

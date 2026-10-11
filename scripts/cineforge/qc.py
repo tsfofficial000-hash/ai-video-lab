@@ -233,7 +233,10 @@ def credit_event_window(ass_path, credit_text):
         parts = ln.rstrip("\n").split(",", 9)
         if len(parts) < 10:
             continue
+        # W1-CI: strip override tags AND normalize a width-fit credit's
+        # two-line \N break so the needle matches the wrapped event text
         text = re.sub(r"\{[^}]*\}", "", parts[9])
+        text = re.sub(r"\\N|\\n", " ", text)
         if needle in " ".join(text.split()):
             try:
                 return _ass_seconds(parts[1]), _ass_seconds(parts[2])

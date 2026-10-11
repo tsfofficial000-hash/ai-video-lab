@@ -118,18 +118,29 @@ def _mood_keywords(mood):
     return sorted(kws)
 
 
-def mood_fit(title, creator, tags, mood, identifier=None):
+def mood_fit(title, creator, tags, mood, identifier=None, collection=None):
     """R4 heuristic: (fits, rank_score, 1-line rationale).
     veto keyword anywhere -> reject; spoken-word forms (librivox etc.) are
-    vetoed for every mood - scanned across title, creator, tags AND the
-    archive identifier (librivox lives in the id, not the title);
+    vetoed for every mood - scanned across title, creator, tags, the
+    archive identifier (librivox lives in the id, not the title) AND the
+    archive collection names (W4: OTR series carry neutral metadata);
     positive keyword hits rank first; neutral metadata still passes (ranked
     below hits) so recall survives."""
     tag_list = tags if isinstance(tags, list) else ([tags] if tags else [])
+    coll_list = collection if isinstance(collection, list) else \
+        ([collection] if collection else [])
     text = " ".join([str(title or ""), str(creator or ""),
                      str(identifier or ""),
                      " ".join(str(t) for t in tag_list)]).lower()
     fam = MOOD_FAMILY.get((mood or "").lower(), "score")
+    # W4: collection-name check FIRST - collection identifiers are CamelCase
+    # ("OldTimeRadio") so the spaced substring list cannot see them
+    for coll in coll_list:
+        c = re.sub(r"[^a-z0-9]", "", str(coll).lower())
+        if c in ("oldtimeradio", "librivox", "radioprograms",
+                 "oldtimeradioprograms", "podcasts", "audiobooks"):
+            return False, 0, (f"vetoed: archive collection '{coll}' is "
+                              f"spoken-word, not music (mood '{mood}')")
     for kw in SPOKEN_WORD_VETO:
         if kw in text:
             return False, 0, (f"vetoed: '{kw.strip()}' is spoken-word, not "
@@ -159,7 +170,8 @@ def apply_mood_fit(cands, mood):
     for c in cands:
         fits, score, why = mood_fit(c.get("title"), c.get("creator"),
                                     c.get("subject"), mood,
-                                    identifier=c.get("identifier"))
+                                    identifier=c.get("identifier"),
+                                    collection=c.get("collection"))
         if not fits:
             continue
         c = dict(c, mood_fit=why, mood_score=score)
@@ -294,12 +306,19 @@ def entry_for_download(kind, title, url, license_=None, creator=None, license_ur
 def archive_search(mood):
     """advancedsearch query string filtered to Creative-Commons-licensed audio.
     R4 hardening: -collection:librivoxaudio keeps the audiobook flood out of
-    the result set (sorted by downloads, librivox chapters dominate otherwise)."""
+    the result set (sorted by downloads, librivox chapters dominate otherwise).
+    W4 hardening: -collection:OldTimeRadio keeps OTR drama/comedy series out
+    (post-veto re-runs still picked 'Tales Of The Texas Rangers' and
+    'Fibber McGee and Molly' - their search metadata carries no spoken-word
+    marker, so only the collection knows); fl[]=collection feeds the
+    collection field into the screen as a second layer."""
     kw = ARCHIVE_QUERIES.get(mood, "(instrumental OR soundtrack)")
     return ("https://archive.org/advancedsearch.php?q=licenseurl%3A%2Acreativecommons%2A"
-            "+AND+mediatype%3Aaudio+AND+-collection%3Alibrivoxaudio+AND+"
+            "+AND+mediatype%3Aaudio+AND+-collection%3Alibrivoxaudio"
+            "+AND+-collection%3AOldTimeRadio+AND+"
             + urllib.parse.quote(kw) +
             "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=licenseurl"
+            "&fl%5B%5D=collection"
             "&sort%5B%5D=downloads+desc&rows=8&output=json")
 
 
@@ -353,13 +372,14 @@ def _archive_candidates(mood, failures):
                     "title": md.get("metadata", {}).get("title") or ident,
                     "creator": md.get("metadata", {}).get("creator") or "unknown",
                     "subject": subj if isinstance(subj, list) else [str(subj)],
+                    "collection": md.get("metadata", {}).get("collection") or [],
                     "licenseurl": lu, "license": lic})
     # R4: veto + rank by mood fit BEFORE any download is attempted
     ranked = apply_mood_fit(out, mood)
     for c in out:
         if c["identifier"] not in {k["identifier"] for k in ranked}:
             failures.append(f"archive_cc: {c['identifier']}: mood-vetoed "
-                            f"({mood_fit(c.get('title'), c.get('creator'), c.get('subject'), mood, identifier=c.get('identifier'))[2]})")
+                            f"({mood_fit(c.get('title'), c.get('creator'), c.get('subject'), mood, identifier=c.get('identifier'), collection=c.get('collection'))[2]})")
     return ranked
 
 

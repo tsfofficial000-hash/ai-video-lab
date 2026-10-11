@@ -76,7 +76,34 @@ def main():
         fail(f"librivox Odyssey must stay vetoed ({why!r})")
     ok("R4 regression cases still vetoed")
 
-    # 5) apply_mood_fit drops the vetoed rows and keeps the ranked music
+    # 5) collection-layer veto (W4 layer 2): OTR items carry neutral
+    #    title/subject metadata - only the archive collection knows
+    fits, _, why = fm.mood_fit("Tales Of The Texas Rangers", "unknown",
+                               [], "sad", identifier="TalesOfTheTexasRangers",
+                               collection=["OldTimeRadio", "audio_talk"])
+    if fits:
+        fail(f"W4 present: 'OldTimeRadio' collection item passes as music "
+             f"({why!r})")
+    ok(f"collection-layer veto fires: {why[:80]}")
+
+    fits, _, why = fm.mood_fit("Fibber McGee and Molly - 1942", "unknown",
+                               [], "motivational",
+                               identifier="FibberMcGeeAndMolly",
+                               collection=["OldTimeRadio"])
+    if fits:
+        fail(f"W4 present: 'Fibber McGee and Molly' (OTR sitcom) passes as "
+             f"music ({why!r})")
+    ok(f"OTR sitcom vetoed via collection: {why[:80]}")
+
+    # 6) music collections survive the collection screen
+    fits, _, why = fm.mood_fit("Piano Nights", "A. Composer", ["piano"], "sad",
+                               identifier="piano_nights",
+                               collection=["netlabels", "audio_music"])
+    if not fits:
+        fail(f"music collection must survive ({why!r})")
+    ok("music collection survives the collection screen")
+
+    # 7) apply_mood_fit drops the vetoed rows and keeps the ranked music
     cands = [{"title": "Jack Benny 143 Eps", "creator": "", "subject": ["Old Time Radio"],
               "identifier": "JackBenny1"},
              {"title": "Piano Nights", "creator": "A. Composer",

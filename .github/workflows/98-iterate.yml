@@ -75,6 +75,14 @@ jobs:
             -crf 28 -an media/proxy.mp4
           [ -s media/proxy.mp4 ] || { echo "proxy empty"; exit 1; }
           ffmpeg -v error -y -i source.mp4 -vn -ac 1 -ar 22050 media/audio.wav
+          # W3: the draft path was bar-blind - without the per-scene bar map
+          # every draft rendered letterboxed (draft G4 RED) and the creative
+          # loop reviewed frames production would never show. Same map as the
+          # 99 chain: edit_plan attaches per-segment active_crop from it.
+          python3 scripts/cineforge/bar_map.py --proxy media/proxy.mp4 \
+            --out reports/bar_map.json --meta reports/source_metadata.json \
+            || echo "WARN: bar map failed - segments fall back to meta-level active_crop"
+          python3 -c "import json,os;m='reports/bar_map.json';d=json.load(open(m)) if os.path.isfile(m) else {};print('bar_map scenes:',len(d.get('scenes',[])),'cropped:',d.get('cropped_scenes','?'))"
 
       - name: "Stages 03-06: audio + beats + transcript (draft-speed single job)"
         run: |
@@ -154,7 +162,7 @@ jobs:
           cd scripts/cineforge && python3 gates.py --video ../../out/final.mp4 \
             --reports ../../reports --search "../../reports" \
             --style "${{ inputs.style }}" || true; cd ../..
-          python3 -c "import json;g=json.load(open('reports/gates_report.json'));print('DRAFT GATES:',g['ALL_GREEN'],'pending',g.get('PENDING'));[print(' ',k,v['green'],v['value'][:100]) for k,v in g.items() if k.startswith('G') and v.get('green') is False]"
+          python3 -c "import json;g=json.load(open('reports/gates_report.json'));print('DRAFT GATES:',g['ALL_GREEN'],'pending',g.get('PENDING'));[print(' ',k,v['green'],v['value'][:100]) for k,v in g.items() if k.startswith('G') and v.get('green') is False];g4=g.get('G4_layout') or {};assert g4.get('green') is True,'W3: draft G4 must be green after the bar map - a letterboxed draft must FAIL the loop, not feed it (got: '+str(g4.get('value') or 'missing/pending'))"
 
       - name: "Evidence bundle (draft)"
         if: always()
@@ -162,7 +170,7 @@ jobs:
           set -e
           mkdir -p draft_evidence
           for f in out/final.mp4 out/poster.jpg reports/qc_report.json \
-                   reports/gates_report.json \
+                   reports/gates_report.json reports/bar_map.json \
                    reports/edit_plan.json reports/audio_mix_report.json \
                    reports/selection_audit.json reports/captions_report.json \
                    reports/fonts_report.json reports/media_manifest.json \

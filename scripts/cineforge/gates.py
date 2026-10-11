@@ -86,20 +86,25 @@ def gate4(video, plan, dur):
             # W4/draft-CI lesson: the cinematic style DECLARES 5.5% bars
             # (configs/styles.json letterbox=true) - absence-of-bars is not
             # the contract for that design. G4 verifies the DECLARED layout:
-            # the top 8% band must be dark (bar actually rendered) on >=95%
-            # of core samples. The bottom band is exempt (end-card + music
-            # credit burn there). The original disease stays fatal in both
-            # directions: undeclared bars when letterbox is false (below),
-            # and a declared letterbox that silently vanished (crop
-            # regression) here.
-            dark = [s for s in core if s["top"] < 25]
-            frac = len(dark) / float(len(core))
-            green = frac >= 0.95 and len(core) >= 8
+            # a 4% band (fully inside the 5.5% bar - the default 8% band
+            # would be 31% bright content and false-RED: measured on draft
+            # 38123946575, top8% YAVG=46 while the bar itself reads Y=0)
+            # must be dark on >=95% of core samples. The bottom band is
+            # exempt (end-card + music credit burn there). The original
+            # disease stays fatal in both directions: undeclared bars when
+            # letterbox is false (below), and a declared letterbox that
+            # silently vanished (crop regression) here.
+            bar_samples = measure_edge_bands(video, band=0.04)
+            core_bar = [s for s in bar_samples
+                        if s["t"] < dur - tail_fade - 0.25] or bar_samples
+            dark = [s for s in core_bar if s["top"] < 25]
+            frac = len(dark) / float(len(core_bar))
+            green = frac >= 0.95 and len(core_bar) >= 8
             val = (f"vertical={vertical} DECLARED letterbox bar_presence="
-                   f"{frac:.3f} ({len(dark)}/{len(core)} dark TOP-band samples, "
-                   f"need >=95%, tail-fade {tail_fade:.1f}s excluded)")
+                   f"{frac:.3f} ({len(dark)}/{len(core_bar)} dark TOP-4% band "
+                   f"samples, need >=95%, tail-fade {tail_fade:.1f}s excluded)")
             return green, val, {"bar_presence": round(frac, 4),
-                                "n_samples": len(core), "n_dark": len(dark),
+                                "n_samples": len(core_bar), "n_dark": len(dark),
                                 "declared_letterbox": True}
         dark = [s for s in core if min(s["top"], s["bottom"]) < 25]
         bar_fraction = len(dark) / float(len(core))

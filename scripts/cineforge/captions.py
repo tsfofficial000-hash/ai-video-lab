@@ -238,7 +238,13 @@ def main():
         h0, h1 = (hook.get("seconds") or [0, 2.5])[:2]
         h1 = min(h1, 2.5)
         y = int(h * safe.get("hook_y_center", 0.30))
-        y0 = int(y - (len(hook_txt_lines) - 1) * hook_fs * 0.55)
+        # W5b: optical centering - the Hook style is \an5 (mid-center), so
+        # \pos anchors the WHOLE block's vertical center. The old
+        # `y - (lines-1)*fs*0.55` subtraction double-compensated and pushed
+        # 2-line hooks up to ~y12-16% (ship review complaint 2 on both v2.1
+        # runs: "rides ~y12-16% vs y~30% spec center"). Anchor the block
+        # center directly on the spec line.
+        y0 = y
         tags = (r"{\pos(" + f"{w // 2},{y0})" + rf"\fs{hook_fs}" +
                 r"\fad(250,180)\fscx92\fscy92" +
                 r"\t(0,250,\fscx100\fscy100)}")
@@ -246,8 +252,9 @@ def main():
         events.append(f"Dialogue: 1,{ts(h0)},{ts(h1)},Hook,,0,0,0,,{tags}{body}")
         decisions.append({"cue": h0, "element": "hook_card",
                           "placement": f"y={y0} size={hook_fs} lines={hook_txt_lines}",
-                          "reason": "hook_y_center per safe_zones, width-fit selected "
-                                    "among complete candidates (E5)",
+                          "reason": "hook_y_center optical center (W5b: block "
+                                    "center anchored at spec line); width-fit "
+                                    "selected among complete candidates (E5)",
                           "face": None,
                           "candidates_considered": pool[:3]})
 

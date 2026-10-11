@@ -114,13 +114,34 @@ class Selector:
                 worst = ov
         return worst
 
+    def _motion(self, c, span):
+        """W5a: motion score of a candidate span = mean |dY| of the luma
+        profile inside [c, c+span] (same metric as the edit_plan interleave).
+        A flat sky-hold scores ~0; an action moment scores high."""
+        ys = [q["y"] for q in self.luma if c <= q["t"] <= c + span]
+        if len(ys) < 2:
+            return 0.0
+        return sum(abs(b - a) for a, b in zip(ys, ys[1:])) / (len(ys) - 1)
+
     def pick(self, cursor, src_span):
         """Nearest candidate >= cursor whose span is free AND fully bright;
         None if exhausted. Never wraps back to the opening (D3).
         G3: the WHOLE span must hold min-Y >= min_y (long spans otherwise
-        sneak past the 1.0s candidate-window check and ship dark frames)."""
+        sneak past the 1.0s candidate-window check and ship dark frames).
+        W5a IN-CLUSTER MOTION-VARIANCE SELECTION: within a small same-scene
+        horizon after the first qualifying candidate, the MOST DYNAMIC
+        candidate wins - a static sky-hold no longer occupies a cluster slot
+        when a dynamic moment sits seconds later in the SAME scene (ship
+        review complaint: t=3.4s/5.2s near-static cloud holds dilute the
+        middle). Forward-only, overlap-free, luma-gated, scene-capped: every
+        hard guard is evaluated identically for every candidate; only the
+        winner among the horizon set changes. Missing luma / motion ties
+        fall back to the earliest qualifying candidate (v2.1 behaviour)."""
         n = len(self.candidates)
         i = self.pos
+        first = None          # (index, t, scene_id) of the first qualifying
+        best = None           # (motion, index, t, scene_id)
+        horizon = max(2.0, 2.0 * src_span)
         while i < n:
             c = self.candidates[i]
             if c < cursor - 1e-6:
@@ -138,20 +159,36 @@ class Selector:
                 i += 1
                 self.stats["dropped_overlap"] += 1
                 continue
+            sid = None
             if self.scene_of is not None and self.max_per_scene is not None:
                 sid = self.scene_of(c + 0.5 * src_span)
                 if self.scene_usage.get(sid, 0) >= self.max_per_scene:
                     i += 1
                     self.stats["dropped_scene_cap"] += 1
                     continue
-            self.used.append((c, c + src_span))
-            if self.scene_of is not None and self.max_per_scene is not None:
-                sid = self.scene_of(c + 0.5 * src_span)
-                self.scene_usage[sid] = self.scene_usage.get(sid, 0) + 1
-            self.pos = i + 1
-            return c
-        self.stats["dropped_exhausted"] += 1
-        return None
+            if first is None:
+                first = (i, c, sid)
+                best = (self._motion(c, src_span), i, c, sid)
+            else:
+                same_scene = (sid is None or first[2] is None or sid == first[2])
+                if (c - first[1]) > horizon or not same_scene:
+                    break                      # horizon exited - decide now
+                m = self._motion(c, src_span)
+                if m > best[0] + 1e-9:
+                    best = (m, i, c, sid)
+            i += 1
+        if best is None:
+            self.stats["dropped_exhausted"] += 1
+            return None
+        _, _, c, sid = best
+        self.used.append((c, c + src_span))
+        if sid is not None:
+            self.scene_usage[sid] = self.scene_usage.get(sid, 0) + 1
+        # pos advances past the FIRST qualifying candidate (not the chosen
+        # one): capacity semantics unchanged, the horizon losers stay
+        # available to later beats subject to the overlap guard
+        self.pos = first[0] + 1
+        return c
 
     def audit(self, n_selected):
         spans = sorted(self.used)

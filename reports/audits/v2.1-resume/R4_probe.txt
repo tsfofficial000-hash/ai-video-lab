@@ -1,0 +1,7 @@
+  PASS: audit case vetoed: vetoed: 'geometry dash' in title/creator/tags contradicts mood 'cinematic'
+  PASS: true match ranked: score=3, mood keyword hit ['cinematic'] in title/creator/tags (mood=cinematic)
+  PASS: neutral survives for recall: neutral metadata - no mood contradiction for 'cinematic'
+  PASS: ranked ['score-item', 'neutral-item'] with rationales attached
+  PASS: manifest entry carries mood_fit: mood keyword hit ['cinematic'] (mood=cinematic)
+  PASS: all 11 moods mapped to veto families
+R4 PROBE: PASS (mood screen + rationale in the manifest)

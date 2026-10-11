@@ -60,6 +60,76 @@ ARCHIVE_QUERIES = {
     "horror": "(horror OR suspense)",
 }
 
+# R4: license-safe is not mood-safe. A CC0 geometry-dash track matched the
+# cinematic advancedsearch query via the fuzzy OR - so archive results are
+# screened TWICE: veto keywords kill genre-contradicting items outright,
+# positive keywords rank true mood matches first. Pure tag/title heuristic
+# (archive metadata carries subjects, not BPM).
+MOOD_FAMILY = {
+    "cinematic": "score", "epic": "score", "dark": "score", "horror": "score",
+    "sad": "sad", "emotional": "sad",
+    "motivational": "hype", "phonk": "hype",
+    "lofi": "calm", "chill": "calm", "ambient": "calm",
+}
+MOOD_VETO = {
+    "score": ["geometry dash", "geometry", "game", "arcade", "chiptune",
+              "8bit", "8-bit", "8 bit", "bitpop", "dubstep", "edm",
+              "electronic dance", "house", "techno", "phonk", "trap",
+              "jumpstyle", "hyperpop", "hardstyle", "nightcore"],
+    "sad": ["dubstep", "edm", "metal", "hardcore", "screamo", "phonk",
+            "trap", "workout", "party", "club", "geometry dash", "game",
+            "arcade", "chiptune"],
+    "hype": ["sleep", "lullaby", "meditation", "whale sounds", "asmr"],
+    "calm": ["dubstep", "edm", "metal", "hardcore", "screamo", "aggressive",
+             "phonk", "drum and bass", "jungle", "workout", "hype",
+             "geometry dash", "game", "arcade", "chiptune"],
+}
+
+
+def _mood_keywords(mood):
+    kws = {mood.lower()}
+    for tok in (ARCHIVE_QUERIES.get(mood) or "").replace("(", " ") \
+            .replace(")", " ").replace("OR", " ").split(","):
+        t = tok.strip().lower()
+        if t:
+            kws.add(t)
+    return sorted(kws)
+
+
+def mood_fit(title, creator, tags, mood):
+    """R4 heuristic: (fits, rank_score, 1-line rationale).
+    veto keyword anywhere -> reject; else rank by positive keyword hits;
+    neutral metadata still passes (ranked below hits) so recall survives."""
+    tag_list = tags if isinstance(tags, list) else ([tags] if tags else [])
+    text = " ".join([str(title or ""), str(creator or ""),
+                     " ".join(str(t) for t in tag_list)]).lower()
+    fam = MOOD_FAMILY.get((mood or "").lower(), "score")
+    for kw in MOOD_VETO.get(fam, []):
+        if kw in text:
+            return False, 0, (f"vetoed: '{kw}' in title/creator/tags "
+                              f"contradicts mood '{mood}'")
+    hits = [kw for kw in _mood_keywords(mood) if kw in text]
+    if hits:
+        return True, 2 + len(hits), (f"mood keyword hit {hits[:3]} in "
+                                     f"title/creator/tags (mood={mood})")
+    return True, 0, f"neutral metadata - no mood contradiction for '{mood}'"
+
+
+def apply_mood_fit(cands, mood):
+    """R4: filter + rank archive candidates in place (search order = download
+    rank, so the sort must be stable); attaches a mood_fit rationale to each
+    surviving candidate for the media_manifest.json entry."""
+    kept = []
+    for c in cands:
+        fits, score, why = mood_fit(c.get("title"), c.get("creator"),
+                                    c.get("subject"), mood)
+        if not fits:
+            continue
+        c = dict(c, mood_fit=why, mood_score=score)
+        kept.append(c)
+    kept.sort(key=lambda c: -c["mood_score"])   # stable: keeps download rank
+    return kept
+
 
 def dl(url, dest, timeout=120):
     req = urllib.request.Request(url, headers=UA)
@@ -156,8 +226,9 @@ def write_synth_entry(dest, manifest, seconds=180, failures=None, egress_ok=Fals
     return entry
 
 
-def entry_for_download(kind, title, url, license_=None, creator=None, license_url=None):
-    """Manifest entry for a verified real-music download (E3 contract)."""
+def entry_for_download(kind, title, url, license_=None, creator=None, license_url=None,
+                       mood_fit=None):
+    """Manifest entry for a verified real-music download (E3 + R4 contract)."""
     if kind == "incompetech_ccb":
         entry = {"license": "CC BY 4.0 (incompetech.com, Kevin MacLeod)",
                  "attribution_required": True,
@@ -178,6 +249,8 @@ def entry_for_download(kind, title, url, license_=None, creator=None, license_ur
                   "mood": None})
     if license_url:
         entry["license_url"] = license_url
+    if mood_fit:
+        entry["mood_fit"] = mood_fit
     return entry
 
 
@@ -207,7 +280,8 @@ def _license_from_archive_url(lu):
 
 
 def _archive_candidates(mood, failures):
-    """[{"identifier","title","creator","licenseurl","file"}] verified metadata."""
+    """[{"identifier","title","creator","licenseurl","file"}] verified metadata,
+    mood-screened and ranked (R4: veto + keyword rank, rationale attached)."""
     q = archive_search(mood)
     try:
         req = urllib.request.Request(q, headers=UA)
@@ -235,11 +309,19 @@ def _archive_candidates(mood, failures):
                  and int(float(f.get("size") or 0)) > 300_000]
         if not files:
             continue
+        subj = md.get("metadata", {}).get("subject") or []
         out.append({"identifier": ident, "file": files[0]["name"],
                     "title": md.get("metadata", {}).get("title") or ident,
                     "creator": md.get("metadata", {}).get("creator") or "unknown",
+                    "subject": subj if isinstance(subj, list) else [str(subj)],
                     "licenseurl": lu, "license": lic})
-    return out
+    # R4: veto + rank by mood fit BEFORE any download is attempted
+    ranked = apply_mood_fit(out, mood)
+    for c in out:
+        if c["identifier"] not in {k["identifier"] for k in ranked}:
+            failures.append(f"archive_cc: {c['identifier']}: mood-vetoed "
+                            f"({mood_fit(c.get('title'), c.get('creator'), c.get('subject'), mood)[2]})")
+    return ranked
 
 
 def main():
@@ -279,7 +361,9 @@ def main():
             sz = dl(url, a.out)
             if probe_ok(a.out):
                 entry = entry_for_download("freepd", name, url)
-                entry.update({"mood": a.mood, "bytes": sz})
+                entry.update({"mood": a.mood, "bytes": sz,
+                              "mood_fit": f"curated mood list for '{a.mood}' "
+                                          f"(configs/music_moods.json)"})
                 print(json.dumps({"status": "ok", **entry}))
                 _write(a.manifest, "music", entry)
                 return
@@ -288,7 +372,7 @@ def main():
             failures.append(f"freepd: {name}: {type(e).__name__}")
             print(f"candidate failed: {name}: {type(e).__name__}", flush=True)
 
-    # 3) Internet Archive CC items
+    # 3) Internet Archive CC items (R4: mood-screened + ranked)
     for cand in _archive_candidates(a.mood, failures):
         url = archive_download_url(cand["identifier"], urllib.parse.quote(cand["file"]))
         try:
@@ -297,7 +381,8 @@ def main():
                 entry = entry_for_download("archive_cc", cand["title"], url,
                                            license_=cand["license"],
                                            creator=cand["creator"],
-                                           license_url=cand["licenseurl"])
+                                           license_url=cand["licenseurl"],
+                                           mood_fit=cand.get("mood_fit"))
                 entry.update({"mood": a.mood, "bytes": sz, "identifier": cand["identifier"]})
                 print(json.dumps({"status": "ok", **entry}))
                 _write(a.manifest, "music", entry)
@@ -314,7 +399,10 @@ def main():
             sz = dl(url, a.out)
             if probe_ok(a.out):
                 entry = entry_for_download("incompetech_ccb", name, url)
-                entry.update({"mood": a.mood, "bytes": sz})
+                entry.update({"mood": a.mood, "bytes": sz,
+                              "mood_fit": f"curated CC-BY fallback list "
+                                          f"(declared mood '{a.mood}'; "
+                                          f"no per-item fit metadata)"})
                 print(json.dumps({"status": "ok", **entry}))
                 _write(a.manifest, "music", entry)
                 return
@@ -330,6 +418,7 @@ def main():
     entry = write_synth_entry(a.out, a.manifest, seconds=180,
                               failures=failures, egress_ok=egress)
     entry["mood"] = a.mood
+    entry["mood_fit"] = "n/a - synth fallback after logged egress/source failures"
     _write(a.manifest, "music", entry)
     print(json.dumps({"status": "ok", **entry}))
 

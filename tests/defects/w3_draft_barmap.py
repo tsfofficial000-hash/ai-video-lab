@@ -75,13 +75,57 @@ def main():
     ok("98 stage-01+02 runs bar_map.py before edit_plan; evidence copies it")
 
     # ---- 2) GATE CONTRACT: draft G4 must be REQUIRED green ----
-    m = re.search(r"Draft gates[\s\S]*", wf) or None
     stage10 = wf[wf.find("Stage 10"):] if "Stage 10" in wf else ""
     if "G4_layout" not in stage10 or "assert" not in stage10:
         fail("W3 present: the iterate gate print does not REQUIRE draft G4 "
              "green - RED letterboxed drafts silently fed the creative loop")
     ok("iterate gate step asserts G4_layout green (letterboxed draft fails "
        "the run)")
+
+    # ---- 2b) EXECUTE the gate-print script (CI lesson: the v2.2 W3 commit's
+    # one-liner had an unbalanced paren that only fired in CI - a probe that
+    # merely greps the YAML cannot catch that; run the heredoc for real) ----
+    with tempfile.TemporaryDirectory() as gd:
+        m = re.search(r"python3 - <<'PY'\n([\s\S]*?)\n\s*PY", stage10)
+        if not m:
+            fail("the stage-10 gate contract must be an executable heredoc "
+                 "python block (grep-only one-liners already shipped a "
+                 "SyntaxError to CI once)")
+        script = m.group(1)
+        # YAML block scalars are indented uniformly; dedent for exec
+        script = "\n".join(ln[10:] if ln.startswith(" " * 10) else ln
+                           for ln in script.splitlines())
+        def run_case(gates, expect_rc, tag):
+            cwd = os.path.join(gd, tag)
+            gp = os.path.join(cwd, "reports")
+            os.makedirs(gp, exist_ok=True)
+            json.dump(gates, open(os.path.join(gp, "gates_report.json"), "w"))
+            r = subprocess.run([sys.executable, "-c", script],
+                               capture_output=True, text=True, cwd=cwd)
+            if r.returncode != expect_rc:
+                fail(f"stage-10 gate script rc={r.returncode} != {expect_rc} "
+                     f"for {tag}: {(r.stderr or r.stdout)[-200:]}")
+            return r
+        base = {"ALL_GREEN": True, "PENDING": ["G9_latency"],
+                "G4_layout": {"green": True, "value": "bar_fraction=0.000"},
+                "G6_audio": {"green": True, "value": "outI=-15.6 via=archive_cc"}}
+        r_ok = run_case(base, 0, "g4g6green")
+        if "W6 label" not in r_ok.stdout:
+            fail(f"green-G6 case must print the W6 label (got: {r_ok.stdout[-160:]})")
+        red6 = json.loads(json.dumps(base))
+        red6["G6_audio"] = {"green": False, "value": "outI=-14.8 outside band"}
+        r_v = run_case(red6, 0, "g6variance")
+        if "VARIANCE" not in r_v.stdout or "[-18,-14]" not in r_v.stdout:
+            fail(f"G6 variance case must print the labelled wider band "
+                 f"(got: {r_v.stdout[-160:]})")
+        red4 = json.loads(json.dumps(base))
+        red4["G4_layout"] = {"green": False, "value": "bar_fraction=0.870"}
+        r_f = run_case(red4, 1, "g4red")
+        if "W3: draft G4 must be green" not in (r_f.stderr + r_f.stdout):
+            fail(f"G4-red case must fail with the W3 message")
+        ok("gate script executes: G4-green/G6-green rc0 + W6 label; G6 "
+           "variance labelled [-18,-14] non-fatal; G4-red fails with the W3 "
+           "message")
 
     # ---- 3) PIXEL LEG: gate4 sees the bars the loop will now react to ----
     with tempfile.TemporaryDirectory() as td:

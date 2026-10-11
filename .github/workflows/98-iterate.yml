@@ -162,7 +162,35 @@ jobs:
           cd scripts/cineforge && python3 gates.py --video ../../out/final.mp4 \
             --reports ../../reports --search "../../reports" \
             --style "${{ inputs.style }}" || true; cd ../..
-          python3 -c "import json;g=json.load(open('reports/gates_report.json'));print('DRAFT GATES:',g['ALL_GREEN'],'pending',g.get('PENDING'));[print(' ',k,v['green'],v['value'][:100]) for k,v in g.items() if k.startswith('G') and v.get('green') is False];g4=g.get('G4_layout') or {};assert g4.get('green') is True,'W3: draft G4 must be green after the bar map - a letterboxed draft must FAIL the loop, not feed it (got: '+str(g4.get('value') or 'missing/pending'));g6=g.get('G6_audio') or {};print('  draft G6 (W6 label): mix self-heal corrective passes run on this shared audio_mix.py path; corrective passes are logged in audio_mix_report.json' if g6.get('green') is True else '  draft G6 VARIANCE (W6 labelled, non-fatal in the draft loop): '+str(g6.get('value') or 'missing')[:110]+' -> draft band declared wider [-18,-14]; production band [-17,-15] stays enforced at 99/stage-10; check loudness_corrections in audio_mix_report.json')"
+          python3 - <<'PY'
+          # W3+W6 draft gate contract: draft G4 must be GREEN (a letterboxed
+          # draft fails the loop instead of feeding it); draft G6 variance is
+          # LABELLED (never silently swallowed) - the mix self-heal corrective
+          # passes run on this shared audio_mix.py path and are logged in
+          # audio_mix_report.json; the production band stays enforced at 99.
+          import json
+          g = json.load(open('reports/gates_report.json'))
+          print('DRAFT GATES:', g['ALL_GREEN'], 'pending', g.get('PENDING'))
+          for k, v in g.items():
+              if k.startswith('G') and v.get('green') is False:
+                  print(' ', k, v['green'], v['value'][:100])
+          g4 = g.get('G4_layout') or {}
+          assert g4.get('green') is True, (
+              'W3: draft G4 must be green after the bar map - a letterboxed '
+              'draft must FAIL the loop, not feed it (got: '
+              + str(g4.get('value') or 'missing/pending') + ')')
+          g6 = g.get('G6_audio') or {}
+          if g6.get('green') is True:
+              print('  draft G6 (W6 label): in production band - mix self-heal '
+                    'corrective passes run on this shared audio_mix.py path; '
+                    'corrective passes are logged in audio_mix_report.json')
+          else:
+              print('  draft G6 VARIANCE (W6 labelled, non-fatal in the draft '
+                    'loop): ' + str(g6.get('value') or 'missing')[:110]
+                    + ' -> draft band declared wider [-18,-14]; production '
+                      'band [-17,-15] stays enforced at 99/stage-10; check '
+                      'loudness_corrections in audio_mix_report.json')
+          PY
 
       - name: "Evidence bundle (draft)"
         if: always()

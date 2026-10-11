@@ -1,0 +1,5 @@
+  PASS: captioned final PASSES via auto-discovered differential path
+  PASS: uncaptioned final correctly FAILS the differential re-burn test
+  PASS: ass-less invocation uses the labelled 0.15% FALLBACK and passes a correctly captioned small-frame final
+  PASS: no-caption plans skip the check
+D6 PROBE: PASS (defect fixed; R1 hermeticity + R2 path labels verified)

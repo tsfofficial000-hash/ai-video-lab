@@ -1,0 +1,19 @@
+probe                        defect      rc  last line
+d1_blackdetect.py            FIXED        0  D1 PROBE: PASS (defect fixed)
+d2_delivery_bundle.py        FIXED        0  D2 PROBE: PASS (defect fixed)
+d3_selection.py              FIXED        0  D3 PROBE: PASS (defect fixed)
+d4_composite.py              FIXED        0  D4 PROBE: PASS (defect fixed)
+d5_grade_wiring.py           FIXED        0  D5 PROBE: PASS (defect fixed)
+d6_captions_check.py         FIXED        0  D6 PROBE: PASS (defect fixed; R1 hermeticity + R2 path labels verified)
+d7_audio_duck.py             FIXED        0  D7 PROBE: PASS (defect fixed)
+e1_bars.py                   FIXED        0  E1 PROBE: PASS (defect fixed)
+e2_g4_measured.py            FIXED        0  E2 PROBE: PASS (defect fixed)
+e3_music_sources.py          FIXED        0  E3 PROBE: PASS (defect fixed)
+e4_target_fidelity.py        FIXED        0  E4 PROBE: PASS (defect fixed)
+e5_hook_candidates.py        FIXED        0  E5 PROBE: PASS (defect fixed)
+e6_diversity.py              FIXED        0  E6 PROBE: PASS (defect fixed)
+e7_endcard.py                FIXED        0  E7 PROBE: PASS (defect fixed)
+
+0/14 defects present, 14/14 fixed
+nits.py                      FIXED        0  NITS PROBE: PASS (4/4 fixed)
+nits: 1/1

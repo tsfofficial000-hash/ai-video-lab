@@ -1,0 +1,54 @@
+{
+ "style": "bold_highlight",
+ "events": 3,
+ "cues": [
+  1.09,
+  5.87
+ ],
+ "font_caption": "Montserrat",
+ "font_hook": "Anton",
+ "fontsize": 99,
+ "margin_v": 291,
+ "hook_size": 168,
+ "licenses": {
+  "Montserrat": "OFL",
+  "Anton": "OFL"
+ },
+ "safe_zone_assert": {
+  "bottom": 288,
+  "margin_v": 291,
+  "within": true
+ },
+ "decisions": [
+  {
+   "cue": 0,
+   "element": "hook_card",
+   "placement": "y=483 size=168 lines=[\"I'M SEARCHING\", 'FOR SOMEONE']",
+   "reason": "hook_y_center per safe_zones, width-fit selected among complete candidates (E5)",
+   "face": null,
+   "candidates_considered": [
+    "I'm searching for someone",
+    "LIKE NOTHING YOU HAVE SEEN",
+    "WAIT FOR THE DROP"
+   ]
+  },
+  {
+   "cue": 1.09,
+   "element": "caption",
+   "placement": "marginV=291",
+   "lines": 2,
+   "keyword": "searching",
+   "face": null,
+   "reason": "bottom_safe_zone"
+  },
+  {
+   "cue": 5.87,
+   "element": "caption",
+   "placement": "marginV=291",
+   "lines": 2,
+   "keyword": "searching",
+   "face": null,
+   "reason": "bottom_safe_zone"
+  }
+ ]
+}

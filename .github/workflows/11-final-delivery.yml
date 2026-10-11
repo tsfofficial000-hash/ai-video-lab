@@ -49,6 +49,14 @@ jobs:
           MM=$(python3 -c "import glob;c=glob.glob('assets01/**/media_manifest.json',recursive=True);print(c[0] if c else '')")
           [ -n "$MM" ] && cp "$MM" delivery/media_manifest.json || echo "WARN: media_manifest.json not in stage-01 artifact"
 
+          # R5 evidence law: captions_report.json (stage-10 artifact) +
+          # fonts_report.json (stage-00 artifact) ride with the other eight
+          # files into the delivery bundle AND the git evidence commit
+          CR=$(python3 -c "import glob;c=glob.glob('final/**/captions_report.json',recursive=True);print(c[0] if c else '')")
+          [ -n "$CR" ] && cp "$CR" delivery/captions_report.json || echo "WARN: captions_report.json missing (evidence law R5)"
+          FR=$(python3 -c "import glob;c=glob.glob('reports00/**/fonts_report.json',recursive=True);print(c[0] if c else '')")
+          [ -n "$FR" ] && cp "$FR" delivery/fonts_report.json || echo "WARN: fonts_report.json missing (evidence law R5)"
+
           # latency.json: merge every per-stage latency record found in artifacts
           python3 - <<'PY'
           import glob, json, os
@@ -186,7 +194,7 @@ jobs:
         run: |
           set -e
           mkdir -p reports/cineforge/run-${{ github.run_id }}
-          for f in qc_report.json gates_report.json latency.json media_manifest.json edit_plan.json environment.json contact_sheet.png aesthetic_report.md; do
+          for f in qc_report.json gates_report.json latency.json media_manifest.json edit_plan.json environment.json contact_sheet.png aesthetic_report.md captions_report.json fonts_report.json; do
             [ -f "delivery/$f" ] && cp "delivery/$f" "reports/cineforge/run-${{ github.run_id }}/" || true
           done
           git config user.name "cineforge bot"

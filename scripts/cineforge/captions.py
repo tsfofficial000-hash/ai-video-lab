@@ -278,7 +278,16 @@ def main():
             if k < len(segs_p) - 1:
                 tr_d = float((s.get("transition_after") or {}).get("dur") or 0.0)
             cum += od - tr_d
-        total = cum + (rows[-1]["out_dur"] if rows else 0.0)
+        # W4-CI fix: cum ALREADY includes the last segment (its
+        # transition_after is rendered inside its own out_dur and does not
+        # extend the timeline). The old `cum + rows[-1]["out_dur"]`
+        # double-counted the last segment and inflated the plan total
+        # (sad draft 38126217839: total 11.3 vs delivered 7.9) - the outro
+        # credit event then landed beyond the end of the video and was
+        # never visible, exactly what the W1 pixel verification caught.
+        # Model verified on run-38109649950: cum 18.44 == the plan's own
+        # duration_chain.delivered 18.44 == ffprobe 18.37 +-xfade rounding.
+        total = cum
         return rows, max(total, 0.0)
 
     def project_seg(ts_, te_, rows, total):

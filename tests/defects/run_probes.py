@@ -17,7 +17,7 @@ PROBES = ["d1_blackdetect.py", "d2_delivery_bundle.py", "d3_selection.py",
           "e7_endcard.py"]
 NITS = ["nits.py"]
 # v2.2 audit findings W1-W6 (each closed with probe + fix + one commit)
-WPROBES = ["w1_credit_burn.py", "w2_font_guard.py", "w3_draft_barmap.py", "w4_music_evidence.py", "w5_creative_residuals.py", "w6_draft_loudness.py"]
+WPROBES = ["w1_credit_burn.py", "w2_font_guard.py", "w3_draft_barmap.py", "w4_music_evidence.py", "w5_creative_residuals.py", "w6_draft_loudness.py", "w7_credit_window.py"]
 
 
 def run_list(names):
